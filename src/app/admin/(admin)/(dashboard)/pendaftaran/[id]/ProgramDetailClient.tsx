@@ -177,7 +177,6 @@ export default function ProgramDetailClient({
   const [progSlug, setProgSlug] = useState(program.slug);
   const [progStatus, setProgStatus] = useState(program.status);
   const [progDeskripsi, setProgDeskripsi] = useState(program.deskripsi || '');
-  const [progGambarUrl, setProgGambarUrl] = useState(program.gambarUrl || '');
   const [progTanggalBuka, setProgTanggalBuka] = useState(
     program.tanggalBuka ? new Date(program.tanggalBuka).toISOString().slice(0, 10) : ''
   );
@@ -407,7 +406,6 @@ export default function ProgramDetailClient({
         slug: progSlug,
         status: progStatus,
         deskripsi: progDeskripsi,
-        gambarUrl: progGambarUrl,
         tanggalBuka: progTanggalBuka || null,
         tanggalTutup: progTanggalTutup || null,
         linkDriveTemplate: progLinkDriveTemplate,
@@ -1943,34 +1941,19 @@ export default function ProgramDetailClient({
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Status Pendaftaran
-                </label>
-                <select
-                  value={progStatus}
-                  onChange={(e) => setProgStatus(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold focus:outline-none focus:border-[#005621]"
-                >
-                  <option value="draft">Draft</option>
-                  <option value="dibuka">Dibuka</option>
-                  <option value="ditutup">Ditutup</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  URL Banner / Gambar
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://..."
-                  value={progGambarUrl}
-                  onChange={(e) => setProgGambarUrl(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                Status Pendaftaran
+              </label>
+              <select
+                value={progStatus}
+                onChange={(e) => setProgStatus(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold focus:outline-none focus:border-[#005621]"
+              >
+                <option value="draft">Draft</option>
+                <option value="dibuka">Dibuka</option>
+                <option value="ditutup">Ditutup</option>
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
