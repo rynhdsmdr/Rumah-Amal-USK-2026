@@ -24,6 +24,14 @@ import {
   faFilePdf,
   faStamp,
   faEye,
+  faClock,
+  faCheckSquare,
+  faSquare,
+  faDownload,
+  faFileExcel,
+  faListUl,
+  faGraduationCap,
+  faMoneyBillWave,
 } from '@fortawesome/free-solid-svg-icons';
 import {
   updateProgramBantuan,
@@ -35,6 +43,7 @@ import {
   updateBiodataField,
   deleteBiodataField,
   updateSubmissionStatus,
+  updateMultipleSubmissionsStatus,
 } from '@/actions/pendaftaran-admin';
 import ConfirmModal from '@/components/admin/ConfirmModal';
 import AdminToast, { ToastState } from '@/components/admin/AdminToast';
@@ -124,6 +133,15 @@ export default function ProgramDetailClient({
 
   // Filter Submissions
   const [subStatusFilter, setSubStatusFilter] = useState(initialStatus);
+
+  // Sub-tabs & Selection Mode
+  const [selectionViewMode, setSelectionViewMode] = useState<'layak' | 'bermasalah' | 'semua'>('layak');
+  const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [candidateStatusFilter, setCandidateStatusFilter] = useState<'all' | 'belum_diseleksi' | 'lolos' | 'tidak_lolos'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterFakultas, setFilterFakultas] = useState('all');
+  const [sortBy, setSortBy] = useState<'default' | 'ipk_desc' | 'penghasilan_asc' | 'nama_asc'>('default');
 
   // ==========================================
   // STATE: DOCUMENT FIELD MODAL
@@ -413,12 +431,140 @@ export default function ProgramDetailClient({
     startTransition(async () => {
       const res = await updateSubmissionStatus(submissionId, newStatus);
       if (res.success) {
-        setToast({ message: `Status pendaftar diubah menjadi "${newStatus}".`, type: 'success' });
+        setToast({ message: `Status pendaftar diubah menjadi "${newStatus.replace(/_/g, ' ')}".`, type: 'success' });
+        setViewingSub((prev) => (prev && prev.id === submissionId ? { ...prev, status: newStatus } : prev));
         router.refresh();
       } else {
         setToast({ message: res.error || 'Gagal mengubah status.', type: 'error' });
       }
     });
+  }
+
+  async function handleBulkSetStatus(newStatus: string) {
+    if (selectedSubIds.length === 0) return;
+    setBulkUpdating(true);
+    try {
+      const res = await updateMultipleSubmissionsStatus(selectedSubIds, newStatus, program.id);
+      if (res.success) {
+        setToast({
+          message: `Berhasil mengubah status ${res.count} pendaftar menjadi "${newStatus.replace(/_/g, ' ')}".`,
+          type: 'success',
+        });
+        setSelectedSubIds([]);
+        router.refresh();
+      } else {
+        setToast({ message: res.error || 'Gagal mengubah status pendaftar.', type: 'error' });
+      }
+    } catch (err: any) {
+      setToast({ message: err.message || 'Terjadi kesalahan saat memproses data.', type: 'error' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  }
+
+  function toggleSelectAll(candidateList: SubmissionItem[]) {
+    const candidateIds = candidateList.map((c) => c.id);
+    const allSelected = candidateIds.length > 0 && candidateIds.every((id) => selectedSubIds.includes(id));
+    if (allSelected) {
+      setSelectedSubIds((prev) => prev.filter((id) => !candidateIds.includes(id)));
+    } else {
+      setSelectedSubIds((prev) => Array.from(new Set([...prev, ...candidateIds])));
+    }
+  }
+
+  function toggleSelectOne(id: string) {
+    setSelectedSubIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  }
+
+  function getBiodataValue(vals: Record<string, any> | null | undefined, candidateKeys: string[]): string {
+    if (!vals) return '-';
+    for (const k of candidateKeys) {
+      if (vals[k] !== undefined && vals[k] !== null && String(vals[k]).trim() !== '') {
+        return String(vals[k]);
+      }
+    }
+    const lowerKeys = Object.keys(vals);
+    for (const target of candidateKeys) {
+      const found = lowerKeys.find((k) => k.toLowerCase() === target.toLowerCase());
+      if (found && vals[found] !== undefined && vals[found] !== null && String(vals[found]).trim() !== '') {
+        return String(vals[found]);
+      }
+    }
+    return '-';
+  }
+
+  function parseNumericVal(val: string): number {
+    if (!val || val === '-') return 0;
+    const clean = val.replace(/Rp|\s/gi, '').replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  }
+
+  function handleExportCsv(targetList: SubmissionItem[], viewTitle: string) {
+    const headers = [
+      'Token',
+      'Tanggal Daftar',
+      'Nama Lengkap',
+      'NPM / Identitas',
+      'No HP / Kontak',
+      'Fakultas',
+      'Program Studi',
+      'IPK',
+      'Penghasilan Ortu / UKT',
+      'Status Berkas',
+      'Catatan Warning',
+      'Status Seleksi',
+      'Link PDF Gabungan',
+    ];
+
+    const rows = targetList.map((sub) => {
+      const vals = sub.biodataValues || {};
+      const nama = vals.nama || vals.nama_lengkap || vals.nama_pengusul || '-';
+      const kontak = vals.no_hp || vals.no_wa || vals.whatsapp || vals.email || '-';
+      const idNum = vals.npm || vals.nik || vals.nim || '-';
+      const fak = getBiodataValue(vals, ['fakultas', 'fakultas_asal']);
+      const prodi = getBiodataValue(vals, ['prodi', 'program_studi', 'jurusan']);
+      const ipk = getBiodataValue(vals, ['ipk', 'ip_semester', 'indeks_prestasi']);
+      const penghasilan = getBiodataValue(vals, ['penghasilan_orang_tua', 'penghasilan_ayah', 'ukt', 'biaya_ukt']);
+      const warningsList = Array.isArray(sub.warnings) ? sub.warnings : [];
+      const statusBerkas =
+        sub.status === 'lolos'
+          ? 'Terverifikasi Lolos'
+          : warningsList.length > 0
+          ? 'Ada Catatan Berkas'
+          : 'Sesuai';
+      const warningNotes = warningsList
+        .map((w: any) => `${w.fileLabel || w.fieldKey}: ${w.reason || w.message}`)
+        .join('; ');
+
+      return [
+        sub.token,
+        formatTgl(sub.submittedAt),
+        `"${String(nama).replace(/"/g, '""')}"`,
+        `"${String(idNum).replace(/"/g, '""')}"`,
+        `"${String(kontak).replace(/"/g, '""')}"`,
+        `"${String(fak).replace(/"/g, '""')}"`,
+        `"${String(prodi).replace(/"/g, '""')}"`,
+        `"${String(ipk).replace(/"/g, '""')}"`,
+        `"${String(penghasilan).replace(/"/g, '""')}"`,
+        `"${statusBerkas}"`,
+        `"${warningNotes.replace(/"/g, '""')}"`,
+        `"${sub.status}"`,
+        `"${sub.linkDokumenGabungan || ''}"`,
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `rekap_${viewTitle.toLowerCase().replace(/\s+/g, '_')}_${program.slug}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   function handleFilterStatus(status: string) {
@@ -436,6 +582,91 @@ export default function ProgramDetailClient({
       minute: '2-digit',
     });
   }
+
+  // ----------------------------------------------------
+  // CANDIDATE POOLS & FILTERING
+  // ----------------------------------------------------
+  const isSubmissionProcessing = (sub: SubmissionItem) =>
+    ['menunggu_diproses', 'sedang_diproses'].includes(sub.status);
+  const isSubmissionFailed = (sub: SubmissionItem) => sub.status === 'gagal_diproses';
+  const getSubWarnings = (sub: SubmissionItem) => (Array.isArray(sub.warnings) ? sub.warnings : []);
+
+  const isSubmissionLayak = (sub: SubmissionItem) => {
+    if (isSubmissionProcessing(sub) || isSubmissionFailed(sub)) return false;
+    const w = getSubWarnings(sub);
+    return w.length === 0 || sub.status === 'lolos';
+  };
+
+  const isSubmissionBermasalah = (sub: SubmissionItem) => {
+    if (sub.status === 'lolos') return false;
+    const w = getSubWarnings(sub);
+    return w.length > 0 || isSubmissionFailed(sub);
+  };
+
+  const poolLayakAll = initialSubmissions.filter(isSubmissionLayak);
+  const poolBermasalahAll = initialSubmissions.filter(isSubmissionBermasalah);
+
+  const availableFakultas = Array.from(
+    new Set(
+      initialSubmissions
+        .map((s) => getBiodataValue(s.biodataValues, ['fakultas', 'fakultas_asal']))
+        .filter((f) => f && f !== '-')
+    )
+  ).sort();
+
+  const displayedPoolLayak = poolLayakAll
+    .filter((sub) => {
+      if (candidateStatusFilter !== 'all' && sub.status !== candidateStatusFilter) {
+        return false;
+      }
+      if (filterFakultas !== 'all') {
+        const fak = getBiodataValue(sub.biodataValues, ['fakultas', 'fakultas_asal']);
+        if (fak !== filterFakultas) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const vals = sub.biodataValues || {};
+        const nama = (vals.nama || vals.nama_lengkap || vals.nama_pengusul || '').toLowerCase();
+        const idNum = (vals.npm || vals.nik || vals.nim || '').toLowerCase();
+        const token = sub.token.toLowerCase();
+        if (!nama.includes(q) && !idNum.includes(q) && !token.includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'ipk_desc') {
+        const valA = parseNumericVal(getBiodataValue(a.biodataValues, ['ipk', 'ip_semester', 'indeks_prestasi']));
+        const valB = parseNumericVal(getBiodataValue(b.biodataValues, ['ipk', 'ip_semester', 'indeks_prestasi']));
+        return valB - valA;
+      }
+      if (sortBy === 'penghasilan_asc') {
+        const valA = parseNumericVal(getBiodataValue(a.biodataValues, ['penghasilan_orang_tua', 'penghasilan_ayah', 'ukt', 'biaya_ukt']));
+        const valB = parseNumericVal(getBiodataValue(b.biodataValues, ['penghasilan_orang_tua', 'penghasilan_ayah', 'ukt', 'biaya_ukt']));
+        return valA - valB;
+      }
+      if (sortBy === 'nama_asc') {
+        const valA = (a.biodataValues?.nama || a.biodataValues?.nama_lengkap || '').toLowerCase();
+        const valB = (b.biodataValues?.nama || b.biodataValues?.nama_lengkap || '').toLowerCase();
+        return valA.localeCompare(valB);
+      }
+      return 0;
+    });
+
+  const displayedPoolBermasalah = poolBermasalahAll.filter((sub) => {
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const vals = sub.biodataValues || {};
+      const nama = (vals.nama || vals.nama_lengkap || vals.nama_pengusul || '').toLowerCase();
+      const idNum = (vals.npm || vals.nik || vals.nim || '').toLowerCase();
+      const token = sub.token.toLowerCase();
+      if (!nama.includes(q) && !idNum.includes(q) && !token.includes(q)) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -778,175 +1009,894 @@ export default function ProgramDetailClient({
       {/* ================================================================= */}
       {/* TAB 3: DATA PENDAFTAR & SELEKSI                                  */}
       {/* ================================================================= */}
+      {/* ================================================================= */}
+      {/* TAB 3: DATA PENDAFTAR & SELEKSI                                  */}
+      {/* ================================================================= */}
       {activeTab === 'pendaftar' && (
-        <div className="space-y-4">
-          {/* Filter Status Submissions */}
-          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex flex-wrap items-center gap-2">
-            {[
-              { key: 'all', label: 'Semua', count: submissionMeta.statusCounts.all },
-              { key: 'menunggu_diproses', label: 'Menunggu Diproses', count: submissionMeta.statusCounts.menunggu_diproses },
-              { key: 'sedang_diproses', label: 'Sedang Diproses', count: submissionMeta.statusCounts.sedang_diproses },
-              { key: 'belum_diseleksi', label: 'Belum Diseleksi', count: submissionMeta.statusCounts.belum_diseleksi },
-              { key: 'lolos', label: 'Lolos Seleksi', count: submissionMeta.statusCounts.lolos },
-              { key: 'tidak_lolos', label: 'Tidak Lolos', count: submissionMeta.statusCounts.tidak_lolos },
-              { key: 'gagal_diproses', label: 'Gagal Diproses', count: submissionMeta.statusCounts.gagal_diproses },
-            ].map((st) => (
-              <button
-                key={st.key}
-                type="button"
-                onClick={() => handleFilterStatus(st.key)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-                  subStatusFilter === st.key
-                    ? 'bg-[#005621] text-white shadow-2xs'
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <span>{st.label}</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-3xs font-black ${
-                  subStatusFilter === st.key ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                }`}>
-                  {st.count || 0}
+        <div className="space-y-5">
+          {/* Header Ringkasan & Ekspor */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-black text-gray-900">Kelola Seleksi &amp; Data Pendaftar</h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-3xs font-extrabold border border-emerald-200">
+                  {initialSubmissions.length} Pendaftar
                 </span>
-              </button>
-            ))}
-          </div>
-
-          {/* Tabel Submissions */}
-          {initialSubmissions.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-xs">
-              <div className="w-14 h-14 rounded-2xl bg-gray-50 text-gray-400 flex items-center justify-center text-2xl mx-auto mb-3">
-                <FontAwesomeIcon icon={faUsers} />
               </div>
-              <h3 className="text-base font-bold text-gray-900">Belum Ada Pendaftar</h3>
-              <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-                Pendaftaran untuk program ini masih kosong atau tidak ada pendaftar dengan status yang dipilih.
+              <p className="text-xs text-gray-500 mt-1 max-w-2xl">
+                Sistem pengelompokan pendaftar: pisahkan berkas yang valid untuk dikomparasi secara cermat, dan tinjau berkas yang bermasalah secara terpisah.
               </p>
             </div>
-          ) : (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-50/80 border-b border-gray-100 text-3xs font-black uppercase tracking-wider text-gray-400">
-                    <tr>
-                      <th className="p-4">Tanggal & Token</th>
-                      <th className="p-4">Identitas Pendaftar</th>
-                      <th className="p-4">Status & Warning Verifikasi</th>
-                      <th className="p-4">PDF Gabungan</th>
-                      <th className="p-4 text-right">Aksi Seleksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {initialSubmissions.map((sub) => {
-                      const vals = sub.biodataValues || {};
-                      const nama = vals.nama || vals.nama_lengkap || vals.nama_pengusul || 'Pendaftar';
-                      const kontak = vals.no_hp || vals.no_wa || vals.whatsapp || vals.email || '-';
-                      const idNum = vals.npm || vals.nik || '';
 
-                      const statusBadgeMap: any = {
-                        menunggu_diproses: 'bg-amber-50 text-amber-700 border-amber-200',
-                        sedang_diproses: 'bg-blue-50 text-blue-700 border-blue-200',
-                        belum_diseleksi: 'bg-purple-50 text-purple-700 border-purple-200',
-                        lolos: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                        tidak_lolos: 'bg-red-50 text-red-700 border-red-200',
-                        gagal_diproses: 'bg-gray-100 text-gray-700 border-gray-300',
-                      };
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() =>
+                  handleExportCsv(
+                    selectionViewMode === 'layak'
+                      ? displayedPoolLayak
+                      : selectionViewMode === 'bermasalah'
+                      ? displayedPoolBermasalah
+                      : initialSubmissions,
+                    selectionViewMode === 'layak'
+                      ? 'Kandidat_Layak'
+                      : selectionViewMode === 'bermasalah'
+                      ? 'Berkas_Catatan'
+                      : 'Semua_Pendaftar'
+                  )
+                }
+                className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold inline-flex items-center gap-2 transition-colors cursor-pointer shadow-2xs"
+                title="Unduh data tabel saat ini ke format CSV/Excel"
+              >
+                <FontAwesomeIcon icon={faFileExcel} className="text-emerald-600" />
+                <span>Ekspor CSV / Excel</span>
+              </button>
+            </div>
+          </div>
 
-                      const warningsList = Array.isArray(sub.warnings) ? sub.warnings : [];
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-2xs">
+              <p className="text-3xs font-bold uppercase tracking-wider text-gray-400">Total Pendaftar</p>
+              <p className="text-lg font-black text-gray-900 mt-0.5">
+                {submissionMeta.statusCounts.all || initialSubmissions.length}
+              </p>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-emerald-100 bg-emerald-50/20 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <p className="text-3xs font-bold uppercase tracking-wider text-emerald-800">Berkas Layak</p>
+                <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-500 text-xs" />
+              </div>
+              <p className="text-lg font-black text-emerald-700 mt-0.5">{poolLayakAll.length}</p>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-amber-100 bg-amber-50/20 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <p className="text-3xs font-bold uppercase tracking-wider text-amber-800">Ada Catatan</p>
+                <FontAwesomeIcon icon={faExclamationTriangle} className="text-amber-500 text-xs" />
+              </div>
+              <p className="text-lg font-black text-amber-700 mt-0.5">{poolBermasalahAll.length}</p>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-emerald-100 shadow-2xs">
+              <p className="text-3xs font-bold uppercase tracking-wider text-emerald-700">Ditetapkan Lolos</p>
+              <p className="text-lg font-black text-emerald-800 mt-0.5">
+                {submissionMeta.statusCounts.lolos || 0}
+              </p>
+            </div>
+          </div>
 
-                      return (
-                        <tr key={sub.id} className="hover:bg-gray-50/60 transition-colors">
-                          <td className="p-4 align-top">
-                            <p className="font-bold text-gray-900">{formatTgl(sub.submittedAt)}</p>
-                            <p className="text-3xs font-mono text-gray-400 mt-0.5 truncate max-w-[120px]">
-                              {sub.token}
-                            </p>
-                          </td>
+          {/* 3 SUB-TABS SELECTOR */}
+          <div className="bg-white p-1.5 rounded-2xl border border-gray-100 shadow-2xs flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectionViewMode('layak');
+                setSelectedSubIds([]);
+              }}
+              className={`flex-1 min-w-[200px] px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-2 ${
+                selectionViewMode === 'layak'
+                  ? 'bg-[#005621] text-white shadow-xs'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <FontAwesomeIcon icon={faCheckCircle} className={selectionViewMode === 'layak' ? 'text-emerald-300' : 'text-emerald-600'} />
+              <span>Berkas Memenuhi Syarat (Kandidat Layak)</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-3xs font-black ${
+                  selectionViewMode === 'layak' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+                }`}
+              >
+                {poolLayakAll.length}
+              </span>
+            </button>
 
-                          <td className="p-4 align-top">
-                            <p className="font-bold text-gray-900 text-sm">{nama}</p>
-                            <p className="text-2xs text-gray-500 font-medium">
-                              {idNum ? `${idNum} • ` : ''}{kontak}
-                            </p>
-                          </td>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectionViewMode('bermasalah');
+                setSelectedSubIds([]);
+              }}
+              className={`flex-1 min-w-[200px] px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-2 ${
+                selectionViewMode === 'bermasalah'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <FontAwesomeIcon icon={faExclamationTriangle} className={selectionViewMode === 'bermasalah' ? 'text-amber-200' : 'text-amber-600'} />
+              <span>Berkas Ada Catatan (Perlu Verifikasi)</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-3xs font-black ${
+                  selectionViewMode === 'bermasalah' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {poolBermasalahAll.length}
+              </span>
+            </button>
 
-                          <td className="p-4 align-top space-y-1.5">
-                            <span
-                              className={`inline-block px-2.5 py-0.5 rounded-lg border text-3xs font-extrabold uppercase tracking-wider ${
-                                statusBadgeMap[sub.status] || 'bg-gray-100 text-gray-600'
+            <button
+              type="button"
+              onClick={() => {
+                setSelectionViewMode('semua');
+                setSelectedSubIds([]);
+              }}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-2 ${
+                selectionViewMode === 'semua'
+                  ? 'bg-gray-800 text-white shadow-xs'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <FontAwesomeIcon icon={faListUl} className={selectionViewMode === 'semua' ? 'text-gray-300' : 'text-gray-500'} />
+              <span>Semua Pendaftar</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-3xs font-black ${
+                  selectionViewMode === 'semua' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                {initialSubmissions.length}
+              </span>
+            </button>
+          </div>
+
+          {/* ================================================================= */}
+          {/* SUB-TAB 1: KANDIDAT LAYAK (BERKAS MEMENUHI SYARAT)                 */}
+          {/* ================================================================= */}
+          {selectionViewMode === 'layak' && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* Toolbar: Search, Filter Fakultas, Filter Status Layak, Sorting */}
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-3">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  {/* Search Input */}
+                  <div className="relative flex-1 max-w-md">
+                    <FontAwesomeIcon
+                      icon={faSearch}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Cari nama, NPM, atau token pendaftar..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-[#005621]"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter Fakultas & Sort */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {availableFakultas.length > 0 && (
+                      <select
+                        value={filterFakultas}
+                        onChange={(e) => setFilterFakultas(e.target.value)}
+                        className="px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 bg-white focus:outline-none focus:border-[#005621] cursor-pointer"
+                      >
+                        <option value="all">Semua Fakultas</option>
+                        {availableFakultas.map((fak) => (
+                          <option key={fak} value={fak}>
+                            {fak}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as any)}
+                      className="px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 bg-white focus:outline-none focus:border-[#005621] cursor-pointer"
+                    >
+                      <option value="default">Urutan: Terbaru</option>
+                      <option value="ipk_desc">Komparasi: IPK Tertinggi</option>
+                      <option value="penghasilan_asc">Komparasi: Penghasilan Terendah</option>
+                      <option value="nama_asc">Nama (A - Z)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Sub-Filter Status Kelulusan Dalam Kandidat Layak */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100">
+                  <span className="text-3xs font-extrabold uppercase text-gray-400 tracking-wider mr-1">
+                    Status Seleksi:
+                  </span>
+                  {[
+                    { key: 'all', label: 'Semua Layak', count: poolLayakAll.length },
+                    {
+                      key: 'belum_diseleksi',
+                      label: 'Belum Diseleksi',
+                      count: poolLayakAll.filter((s) => s.status === 'belum_diseleksi').length,
+                    },
+                    {
+                      key: 'lolos',
+                      label: 'Lolos Seleksi',
+                      count: poolLayakAll.filter((s) => s.status === 'lolos').length,
+                    },
+                    {
+                      key: 'tidak_lolos',
+                      label: 'Tidak Lolos',
+                      count: poolLayakAll.filter((s) => s.status === 'tidak_lolos').length,
+                    },
+                  ].map((flt) => (
+                    <button
+                      key={flt.key}
+                      type="button"
+                      onClick={() => setCandidateStatusFilter(flt.key as any)}
+                      className={`px-2.5 py-1 rounded-lg text-2xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                        candidateStatusFilter === flt.key
+                          ? 'bg-emerald-700 text-white shadow-2xs'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <span>{flt.label}</span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-3xs font-black ${
+                          candidateStatusFilter === flt.key
+                            ? 'bg-white/20 text-white'
+                            : 'bg-white text-gray-700'
+                        }`}
+                      >
+                        {flt.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tabel Komparasi Kandidat Layak */}
+              {displayedPoolLayak.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-xs">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mx-auto mb-3">
+                    <FontAwesomeIcon icon={faCheckCircle} />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">Tidak Ada Pendaftar yang Cocok</h3>
+                  <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+                    {poolLayakAll.length === 0
+                      ? 'Belum ada pendaftar yang berkasnya terverifikasi sesuai syarat otomatis.'
+                      : 'Tidak ada kandidat layak yang sesuai dengan pencarian atau filter yang dipilih.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50/80 border-b border-gray-100 text-3xs font-black uppercase tracking-wider text-gray-400">
+                        <tr>
+                          <th className="p-4 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              checked={
+                                displayedPoolLayak.length > 0 &&
+                                displayedPoolLayak.every((c) => selectedSubIds.includes(c.id))
+                              }
+                              onChange={() => toggleSelectAll(displayedPoolLayak)}
+                              className="rounded border-gray-300 text-[#005621] focus:ring-[#005621] cursor-pointer"
+                              title="Pilih semua di tampilan ini"
+                            />
+                          </th>
+                          <th className="p-4">Tanggal &amp; Token</th>
+                          <th className="p-4">Identitas Pendaftar</th>
+                          <th className="p-4">Data Komparasi (Akademik &amp; Finansial)</th>
+                          <th className="p-4">Dokumen Gabungan</th>
+                          <th className="p-4">Status Seleksi</th>
+                          <th className="p-4 text-right">Aksi Seleksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {displayedPoolLayak.map((sub) => {
+                          const vals = sub.biodataValues || {};
+                          const nama = vals.nama || vals.nama_lengkap || vals.nama_pengusul || 'Pendaftar';
+                          const kontak = vals.no_hp || vals.no_wa || vals.whatsapp || vals.email || '-';
+                          const idNum = vals.npm || vals.nik || vals.nim || '';
+                          const fak = getBiodataValue(vals, ['fakultas', 'fakultas_asal']);
+                          const prodi = getBiodataValue(vals, ['prodi', 'program_studi', 'jurusan']);
+                          const ipk = getBiodataValue(vals, ['ipk', 'ip_semester', 'indeks_prestasi']);
+                          const penghasilan = getBiodataValue(vals, [
+                            'penghasilan_orang_tua',
+                            'penghasilan_ayah',
+                            'penghasilan_ibu',
+                            'ukt',
+                            'biaya_ukt',
+                          ]);
+
+                          const isSelected = selectedSubIds.includes(sub.id);
+
+                          const statusBadgeMap: any = {
+                            belum_diseleksi: 'bg-purple-50 text-purple-800 border-purple-200',
+                            lolos: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                            tidak_lolos: 'bg-rose-50 text-rose-800 border-rose-200',
+                          };
+
+                          return (
+                            <tr
+                              key={sub.id}
+                              className={`transition-colors ${
+                                isSelected ? 'bg-emerald-50/40 hover:bg-emerald-50/60' : 'hover:bg-gray-50/60'
                               }`}
                             >
-                              {sub.status.replace(/_/g, ' ')}
-                            </span>
+                              <td className="p-4 text-center align-top">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelectOne(sub.id)}
+                                  className="rounded border-gray-300 text-[#005621] focus:ring-[#005621] cursor-pointer"
+                                />
+                              </td>
 
-                            {warningsList.length > 0 && (
-                              <div className="text-3xs text-amber-800 bg-amber-50/80 p-2 rounded-lg border border-amber-200 space-y-0.5 max-w-xs">
-                                <div className="font-black flex items-center gap-1 text-amber-900">
-                                  <FontAwesomeIcon icon={faExclamationTriangle} />
-                                  <span>{warningsList.length} Catatan Sistem:</span>
+                              <td className="p-4 align-top">
+                                <p className="font-bold text-gray-900">{formatTgl(sub.submittedAt)}</p>
+                                <p className="text-3xs font-mono text-gray-400 mt-0.5 truncate max-w-[120px]">
+                                  {sub.token}
+                                </p>
+                              </td>
+
+                              <td className="p-4 align-top">
+                                <p className="font-bold text-gray-900 text-sm">{nama}</p>
+                                <p className="text-2xs text-gray-500 font-medium">
+                                  {idNum ? `${idNum} • ` : ''}{kontak}
+                                </p>
+                              </td>
+
+                              {/* Data Komparasi Seleksi */}
+                              <td className="p-4 align-top space-y-1">
+                                <p className="text-2xs font-semibold text-gray-800">
+                                  {fak !== '-' ? fak : ''}{prodi !== '-' ? (fak !== '-' ? ` / ${prodi}` : prodi) : '-'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                  {ipk !== '-' && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-3xs font-bold">
+                                      <FontAwesomeIcon icon={faGraduationCap} className="text-blue-500" />
+                                      <span>IPK: {ipk}</span>
+                                    </span>
+                                  )}
+                                  {penghasilan !== '-' && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 text-3xs font-bold">
+                                      <FontAwesomeIcon icon={faMoneyBillWave} className="text-amber-600" />
+                                      <span>{penghasilan}</span>
+                                    </span>
+                                  )}
                                 </div>
-                                {warningsList.slice(0, 2).map((w: any, i: number) => (
-                                  <p key={i} className="line-clamp-1">
-                                    • {typeof w === 'string' ? w : w.message || JSON.stringify(w)}
-                                  </p>
-                                ))}
-                                {warningsList.length > 2 && (
-                                  <p className="text-3xs text-amber-700 font-bold">
-                                    +{warningsList.length - 2} catatan lainnya…
-                                  </p>
+                              </td>
+
+                              {/* Dokumen PDF */}
+                              <td className="p-4 align-top">
+                                {sub.linkDokumenGabungan ? (
+                                  <a
+                                    href={sub.linkDokumenGabungan}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-2xs font-bold border border-blue-200 inline-flex items-center gap-1.5 transition-colors shadow-2xs"
+                                  >
+                                    <FontAwesomeIcon icon={faFilePdf} className="text-red-500 text-xs" />
+                                    <span>Unduh PDF</span>
+                                    <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
+                                  </a>
+                                ) : (
+                                  <span className="text-3xs text-gray-400 italic">Belum dibuat</span>
                                 )}
-                              </div>
-                            )}
-                          </td>
+                              </td>
 
-                          <td className="p-4 align-top">
-                            {sub.linkDokumenGabungan ? (
-                              <a
-                                href={sub.linkDokumenGabungan}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-2xs font-bold border border-blue-200 inline-flex items-center gap-1.5 transition-colors"
-                              >
-                                <FontAwesomeIcon icon={faFilePdf} className="text-red-500 text-xs" />
-                                <span>Unduh PDF</span>
-                                <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
-                              </a>
-                            ) : (
-                              <span className="text-3xs text-gray-400 italic">Belum dibuat</span>
-                            )}
-                          </td>
+                              {/* Status Seleksi */}
+                              <td className="p-4 align-top">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-black uppercase tracking-wider ${
+                                    statusBadgeMap[sub.status] || 'bg-gray-100 text-gray-600 border-gray-200'
+                                  }`}
+                                >
+                                  {sub.status === 'lolos' && <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-xs" />}
+                                  {sub.status === 'tidak_lolos' && <FontAwesomeIcon icon={faTimesCircle} className="text-rose-600 text-xs" />}
+                                  {sub.status === 'belum_diseleksi' && <FontAwesomeIcon icon={faClock} className="text-purple-600 text-xs" />}
+                                  <span>{sub.status.replace(/_/g, ' ')}</span>
+                                </span>
+                              </td>
 
-                          <td className="p-4 align-top text-right space-y-2">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setViewingSub(sub)}
-                                className="px-2.5 py-1 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-2xs font-bold inline-flex items-center gap-1 cursor-pointer"
-                                title="Lihat detail biodata dan berkas lengkap"
-                              >
-                                <FontAwesomeIcon icon={faEye} />
-                                <span>Detail</span>
-                              </button>
+                              {/* Aksi Seleksi */}
+                              <td className="p-4 align-top text-right space-y-2">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingSub(sub)}
+                                    className="px-2.5 py-1 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-2xs font-bold inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                                    title="Lihat detail biodata dan berkas lengkap"
+                                  >
+                                    <FontAwesomeIcon icon={faEye} />
+                                    <span>Detail</span>
+                                  </button>
 
-                              <select
-                                value={sub.status}
-                                onChange={(e) => handleChangeSubmissionStatus(sub.id, e.target.value)}
-                                disabled={isPending}
-                                className="px-2.5 py-1 rounded-lg border border-gray-200 text-2xs font-bold text-gray-700 bg-white focus:outline-none focus:border-[#005621] cursor-pointer"
-                              >
-                                <option value="belum_diseleksi">Belum Diseleksi</option>
-                                <option value="lolos">Lolos</option>
-                                <option value="tidak_lolos">Tidak Lolos</option>
-                                <option value="menunggu_diproses">Menunggu Diproses</option>
-                                <option value="sedang_diproses">Sedang Diproses</option>
-                                <option value="gagal_diproses">Gagal Diproses</option>
-                              </select>
-                            </div>
-                          </td>
+                                  <select
+                                    value={sub.status}
+                                    onChange={(e) => handleChangeSubmissionStatus(sub.id, e.target.value)}
+                                    disabled={isPending}
+                                    className="px-2.5 py-1 rounded-lg border border-gray-300 text-2xs font-bold text-gray-800 bg-white focus:outline-none focus:border-[#005621] cursor-pointer shadow-2xs"
+                                  >
+                                    <option value="belum_diseleksi">Belum Diseleksi</option>
+                                    <option value="lolos">Lolos</option>
+                                    <option value="tidak_lolos">Tidak Lolos</option>
+                                  </select>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* SUB-TAB 2: BERKAS ADA CATATAN / BERMASALAH                         */}
+          {/* ================================================================= */}
+          {selectionViewMode === 'bermasalah' && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* Alert Info */}
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-start gap-3 text-xs text-amber-950">
+                <FontAwesomeIcon icon={faExclamationTriangle} className="text-amber-600 text-base shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-extrabold text-amber-950">
+                    Catatan Verifikasi Berkas dari Sistem ({poolBermasalahAll.length} Pendaftar)
+                  </p>
+                  <p className="text-2xs text-amber-800 leading-relaxed font-medium">
+                    Daftar di bawah memuat pendaftar yang memiliki ketidaksesuaian berkas (misal: nama pendaftar di berkas berbeda dengan formulir, kata kunci OCR tidak lengkap, atau gagal diproses). Admin dapat meninjau berkas via tombol <strong>Detail</strong> dan tetap dapat meloloskannya secara manual jika berkas dinilai sah.
+                  </p>
+                </div>
+              </div>
+
+              {/* Search */}
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
+                <div className="relative max-w-md">
+                  <FontAwesomeIcon
+                    icon={faSearch}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Cari pendaftar dengan catatan berkas..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-amber-600"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Tabel Berkas Ada Catatan */}
+              {displayedPoolBermasalah.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-xs">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mx-auto mb-3">
+                    <FontAwesomeIcon icon={faCheckCircle} />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">Tidak Ada Berkas Bermasalah</h3>
+                  <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+                    {poolBermasalahAll.length === 0
+                      ? 'Luar biasa! Seluruh berkas pendaftar terverifikasi sesuai syarat tanpa catatan warning.'
+                      : 'Tidak ada pendaftar bermasalah yang cocok dengan pencarian Anda.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50/80 border-b border-gray-100 text-3xs font-black uppercase tracking-wider text-gray-400">
+                        <tr>
+                          <th className="p-4">Tanggal &amp; Token</th>
+                          <th className="p-4">Identitas Pendaftar</th>
+                          <th className="p-4">Catatan Verifikasi Berkas</th>
+                          <th className="p-4">PDF Gabungan</th>
+                          <th className="p-4">Status Pendaftar</th>
+                          <th className="p-4 text-right">Aksi Peninjauan</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {displayedPoolBermasalah.map((sub) => {
+                          const vals = sub.biodataValues || {};
+                          const nama = vals.nama || vals.nama_lengkap || vals.nama_pengusul || 'Pendaftar';
+                          const kontak = vals.no_hp || vals.no_wa || vals.whatsapp || vals.email || '-';
+                          const idNum = vals.npm || vals.nik || '';
+                          const warningsList = Array.isArray(sub.warnings) ? sub.warnings : [];
+
+                          const statusBadgeMap: any = {
+                            menunggu_diproses: 'bg-amber-50 text-amber-800 border-amber-200',
+                            sedang_diproses: 'bg-blue-50 text-blue-800 border-blue-200',
+                            belum_diseleksi: 'bg-purple-50 text-purple-800 border-purple-200',
+                            lolos: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                            tidak_lolos: 'bg-rose-50 text-rose-800 border-rose-200',
+                            gagal_diproses: 'bg-gray-100 text-gray-800 border-gray-300',
+                          };
+
+                          return (
+                            <tr key={sub.id} className="hover:bg-amber-50/30 transition-colors">
+                              <td className="p-4 align-top">
+                                <p className="font-bold text-gray-900">{formatTgl(sub.submittedAt)}</p>
+                                <p className="text-3xs font-mono text-gray-400 mt-0.5 truncate max-w-[120px]">
+                                  {sub.token}
+                                </p>
+                              </td>
+
+                              <td className="p-4 align-top">
+                                <p className="font-bold text-gray-900 text-sm">{nama}</p>
+                                <p className="text-2xs text-gray-500 font-medium">
+                                  {idNum ? `${idNum} • ` : ''}{kontak}
+                                </p>
+                              </td>
+
+                              {/* Kolom Catatan Warning Berkas */}
+                              <td className="p-4 align-top">
+                                {warningsList.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingSub(sub)}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-black bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 transition-all cursor-pointer shadow-2xs group"
+                                    title="Klik untuk membuka rincian berkas yang bermasalah"
+                                  >
+                                    <FontAwesomeIcon icon={faExclamationTriangle} className="text-amber-600 text-xs" />
+                                    <span>{warningsList.length} Catatan Berkas</span>
+                                    <span className="text-3xs text-amber-700 underline font-bold group-hover:text-amber-950">
+                                      (Periksa Detail)
+                                    </span>
+                                  </button>
+                                ) : sub.status === 'gagal_diproses' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-3xs font-bold bg-rose-50 text-rose-700 border-rose-200">
+                                    <FontAwesomeIcon icon={faTimesCircle} className="text-rose-500 text-xs" />
+                                    <span>Gagal Verifikasi Antrean</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-3xs text-gray-400">-</span>
+                                )}
+                              </td>
+
+                              {/* PDF Gabungan */}
+                              <td className="p-4 align-top">
+                                {sub.linkDokumenGabungan ? (
+                                  <a
+                                    href={sub.linkDokumenGabungan}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-2xs font-bold border border-blue-200 inline-flex items-center gap-1.5 transition-colors shadow-2xs"
+                                  >
+                                    <FontAwesomeIcon icon={faFilePdf} className="text-red-500 text-xs" />
+                                    <span>Unduh PDF</span>
+                                    <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
+                                  </a>
+                                ) : (
+                                  <span className="text-3xs text-gray-400 italic">Belum dibuat</span>
+                                )}
+                              </td>
+
+                              {/* Status Pendaftar */}
+                              <td className="p-4 align-top">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-black uppercase tracking-wider ${
+                                    statusBadgeMap[sub.status] || 'bg-gray-100 text-gray-600 border-gray-200'
+                                  }`}
+                                >
+                                  {sub.status === 'lolos' && <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-xs" />}
+                                  {sub.status === 'tidak_lolos' && <FontAwesomeIcon icon={faTimesCircle} className="text-rose-600 text-xs" />}
+                                  {sub.status === 'belum_diseleksi' && <FontAwesomeIcon icon={faClock} className="text-purple-600 text-xs" />}
+                                  {sub.status === 'gagal_diproses' && <FontAwesomeIcon icon={faExclamationTriangle} className="text-gray-600 text-xs" />}
+                                  <span>{sub.status.replace(/_/g, ' ')}</span>
+                                </span>
+                              </td>
+
+                              {/* Aksi */}
+                              <td className="p-4 align-top text-right space-y-2">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingSub(sub)}
+                                    className="px-2.5 py-1 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-2xs font-bold inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                                    title="Tinjau detail dan putuskan kelulusan"
+                                  >
+                                    <FontAwesomeIcon icon={faEye} />
+                                    <span>Tinjau Detail</span>
+                                  </button>
+
+                                  <select
+                                    value={sub.status}
+                                    onChange={(e) => handleChangeSubmissionStatus(sub.id, e.target.value)}
+                                    disabled={isPending}
+                                    className="px-2.5 py-1 rounded-lg border border-gray-300 text-2xs font-bold text-gray-800 bg-white focus:outline-none focus:border-amber-600 cursor-pointer shadow-2xs"
+                                  >
+                                    <option value="belum_diseleksi">Belum Diseleksi</option>
+                                    <option value="lolos">Lolos (Verifikasi Manual)</option>
+                                    <option value="tidak_lolos">Tidak Lolos</option>
+                                    <option value="gagal_diproses">Gagal Diproses</option>
+                                  </select>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* SUB-TAB 3: SEMUA PENDAFTAR (MASTER VIEW)                          */}
+          {/* ================================================================= */}
+          {selectionViewMode === 'semua' && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* Filter Status Submissions Lama */}
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex flex-wrap items-center gap-2">
+                {[
+                  { key: 'all', label: 'Semua', count: submissionMeta.statusCounts.all },
+                  { key: 'menunggu_diproses', label: 'Menunggu Diproses', count: submissionMeta.statusCounts.menunggu_diproses },
+                  { key: 'sedang_diproses', label: 'Sedang Diproses', count: submissionMeta.statusCounts.sedang_diproses },
+                  { key: 'belum_diseleksi', label: 'Belum Diseleksi', count: submissionMeta.statusCounts.belum_diseleksi },
+                  { key: 'lolos', label: 'Lolos Seleksi', count: submissionMeta.statusCounts.lolos },
+                  { key: 'tidak_lolos', label: 'Tidak Lolos', count: submissionMeta.statusCounts.tidak_lolos },
+                  { key: 'gagal_diproses', label: 'Gagal Diproses', count: submissionMeta.statusCounts.gagal_diproses },
+                ].map((st) => (
+                  <button
+                    key={st.key}
+                    type="button"
+                    onClick={() => handleFilterStatus(st.key)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                      subStatusFilter === st.key
+                        ? 'bg-[#005621] text-white shadow-2xs'
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <span>{st.label}</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-3xs font-black ${
+                        subStatusFilter === st.key ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {st.count || 0}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Master Tabel */}
+              {initialSubmissions.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-xs">
+                  <div className="w-14 h-14 rounded-2xl bg-gray-50 text-gray-400 flex items-center justify-center text-2xl mx-auto mb-3">
+                    <FontAwesomeIcon icon={faUsers} />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">Belum Ada Pendaftar</h3>
+                  <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+                    Pendaftaran untuk program ini masih kosong atau tidak ada pendaftar dengan status yang dipilih.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50/80 border-b border-gray-100 text-3xs font-black uppercase tracking-wider text-gray-400">
+                        <tr>
+                          <th className="p-4">Tanggal &amp; Token</th>
+                          <th className="p-4">Identitas Pendaftar</th>
+                          <th className="p-4">Status Pendaftar</th>
+                          <th className="p-4">Verifikasi Berkas</th>
+                          <th className="p-4">PDF Gabungan</th>
+                          <th className="p-4 text-right">Aksi Seleksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {initialSubmissions.map((sub) => {
+                          const vals = sub.biodataValues || {};
+                          const nama = vals.nama || vals.nama_lengkap || vals.nama_pengusul || 'Pendaftar';
+                          const kontak = vals.no_hp || vals.no_wa || vals.whatsapp || vals.email || '-';
+                          const idNum = vals.npm || vals.nik || '';
+
+                          const statusBadgeMap: any = {
+                            menunggu_diproses: 'bg-amber-50 text-amber-800 border-amber-200',
+                            sedang_diproses: 'bg-blue-50 text-blue-800 border-blue-200',
+                            belum_diseleksi: 'bg-purple-50 text-purple-800 border-purple-200',
+                            lolos: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                            tidak_lolos: 'bg-rose-50 text-rose-800 border-rose-200',
+                            gagal_diproses: 'bg-gray-100 text-gray-800 border-gray-300',
+                          };
+
+                          const warningsList = Array.isArray(sub.warnings) ? sub.warnings : [];
+
+                          return (
+                            <tr key={sub.id} className="hover:bg-gray-50/60 transition-colors">
+                              <td className="p-4 align-top">
+                                <p className="font-bold text-gray-900">{formatTgl(sub.submittedAt)}</p>
+                                <p className="text-3xs font-mono text-gray-400 mt-0.5 truncate max-w-[120px]">
+                                  {sub.token}
+                                </p>
+                              </td>
+
+                              <td className="p-4 align-top">
+                                <p className="font-bold text-gray-900 text-sm">{nama}</p>
+                                <p className="text-2xs text-gray-500 font-medium">
+                                  {idNum ? `${idNum} • ` : ''}{kontak}
+                                </p>
+                              </td>
+
+                              {/* KOLOM 1: STATUS PENDAFTAR */}
+                              <td className="p-4 align-top">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-black uppercase tracking-wider ${
+                                    statusBadgeMap[sub.status] || 'bg-gray-100 text-gray-600 border-gray-200'
+                                  }`}
+                                >
+                                  {sub.status === 'lolos' && <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-xs" />}
+                                  {sub.status === 'tidak_lolos' && <FontAwesomeIcon icon={faTimesCircle} className="text-rose-600 text-xs" />}
+                                  {sub.status === 'belum_diseleksi' && <FontAwesomeIcon icon={faClock} className="text-purple-600 text-xs" />}
+                                  {sub.status === 'sedang_diproses' && <FontAwesomeIcon icon={faSpinner} className="animate-spin text-blue-600 text-xs" />}
+                                  {sub.status === 'menunggu_diproses' && <FontAwesomeIcon icon={faClock} className="text-amber-600 text-xs" />}
+                                  {sub.status === 'gagal_diproses' && <FontAwesomeIcon icon={faExclamationTriangle} className="text-gray-600 text-xs" />}
+                                  <span>{sub.status.replace(/_/g, ' ')}</span>
+                                </span>
+                              </td>
+
+                              {/* KOLOM 2: VERIFIKASI BERKAS / WARNING */}
+                              <td className="p-4 align-top">
+                                {sub.status === 'lolos' ? (
+                                  <span
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-extrabold bg-emerald-50 text-emerald-800 border-emerald-200"
+                                    title="Pendaftar telah diverifikasi dan disetujui admin."
+                                  >
+                                    <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-xs" />
+                                    <span>Terverifikasi Disetujui</span>
+                                  </span>
+                                ) : warningsList.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingSub(sub)}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-black bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 hover:border-amber-400 transition-all cursor-pointer shadow-2xs group"
+                                    title="Klik untuk membuka rincian berkas yang bermasalah di pop-up detail"
+                                  >
+                                    <FontAwesomeIcon icon={faExclamationTriangle} className="text-amber-600 text-xs" />
+                                    <span>{warningsList.length} Catatan Berkas</span>
+                                    <span className="text-3xs text-amber-600 font-bold underline ml-0.5 group-hover:text-amber-900">
+                                      (Detail)
+                                    </span>
+                                  </button>
+                                ) : ['menunggu_diproses', 'sedang_diproses'].includes(sub.status) ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-bold bg-gray-50 text-gray-600 border-gray-200">
+                                    <FontAwesomeIcon icon={faClock} className="text-gray-400 text-xs" />
+                                    <span>Menunggu Antrean</span>
+                                  </span>
+                                ) : sub.status === 'gagal_diproses' ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-bold bg-rose-50 text-rose-700 border-rose-200">
+                                    <FontAwesomeIcon icon={faExclamationTriangle} className="text-rose-500 text-xs" />
+                                    <span>Gagal Verifikasi</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-3xs font-extrabold bg-emerald-50 text-emerald-700 border-emerald-200">
+                                    <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-xs" />
+                                    <span>Berkas Sesuai</span>
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="p-4 align-top">
+                                {sub.linkDokumenGabungan ? (
+                                  <a
+                                    href={sub.linkDokumenGabungan}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-2xs font-bold border border-blue-200 inline-flex items-center gap-1.5 transition-colors shadow-2xs"
+                                  >
+                                    <FontAwesomeIcon icon={faFilePdf} className="text-red-500 text-xs" />
+                                    <span>Unduh PDF</span>
+                                    <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
+                                  </a>
+                                ) : (
+                                  <span className="text-3xs text-gray-400 italic">Belum dibuat</span>
+                                )}
+                              </td>
+
+                              <td className="p-4 align-top text-right space-y-2">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingSub(sub)}
+                                    className="px-2.5 py-1 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-2xs font-bold inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                                    title="Lihat detail biodata dan berkas lengkap"
+                                  >
+                                    <FontAwesomeIcon icon={faEye} />
+                                    <span>Detail</span>
+                                  </button>
+
+                                  <select
+                                    value={sub.status}
+                                    onChange={(e) => handleChangeSubmissionStatus(sub.id, e.target.value)}
+                                    disabled={isPending}
+                                    className="px-2.5 py-1 rounded-lg border border-gray-300 text-2xs font-bold text-gray-800 bg-white focus:outline-none focus:border-[#005621] cursor-pointer shadow-2xs"
+                                  >
+                                    <option value="belum_diseleksi">Belum Diseleksi</option>
+                                    <option value="lolos">Lolos</option>
+                                    <option value="tidak_lolos">Tidak Lolos</option>
+                                    <option value="menunggu_diproses">Menunggu Diproses</option>
+                                    <option value="sedang_diproses">Sedang Diproses</option>
+                                    <option value="gagal_diproses">Gagal Diproses</option>
+                                  </select>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* FLOATING BULK ACTION BAR */}
+          {selectedSubIds.length > 0 && selectionViewMode === 'layak' && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900/95 backdrop-blur-md text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-gray-700/80 flex flex-wrap items-center gap-3 sm:gap-4 animate-slideUp">
+              <div className="flex items-center gap-2 pr-2 border-r border-gray-700">
+                <FontAwesomeIcon icon={faCheckSquare} className="text-emerald-400 text-sm" />
+                <span className="text-xs font-bold whitespace-nowrap">
+                  {selectedSubIds.length} Pendaftar Dipilih
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={bulkUpdating}
+                  onClick={() => handleBulkSetStatus('lolos')}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  <FontAwesomeIcon icon={faCheckCircle} />
+                  <span>Tetapkan Lolos</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={bulkUpdating}
+                  onClick={() => handleBulkSetStatus('tidak_lolos')}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  <FontAwesomeIcon icon={faTimesCircle} />
+                  <span>Tidak Lolos</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={bulkUpdating}
+                  onClick={() => setSelectedSubIds([])}
+                  className="px-3 py-1.5 rounded-xl text-gray-300 hover:text-white hover:bg-gray-800 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
               </div>
             </div>
           )}
@@ -1383,106 +2333,332 @@ export default function ProgramDetailClient({
       {/* ================================================================= */}
       {/* MODAL: DETAIL SUBMISSION                                         */}
       {/* ================================================================= */}
-      {viewingSub && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
-          onClick={() => setViewingSub(null)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto transform transition-all animate-scaleUp"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <div>
-                <h3 className="text-base font-black text-gray-900">
-                  Detail Pendaftaran
-                </h3>
-                <p className="text-3xs font-mono text-gray-400 mt-0.5">Token: {viewingSub.token}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setViewingSub(null)}
-                className="text-gray-400 hover:text-gray-600 text-sm p-1 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+      {viewingSub && (() => {
+        const vals = viewingSub.biodataValues || {};
+        const namaPendaftar =
+          vals.nama_lengkap ||
+          vals.nama ||
+          vals.nama_mahasiswa ||
+          vals.nama_pengusul ||
+          vals.nama_pendaftar ||
+          'Pendaftar';
+        const isLolos = viewingSub.status === 'lolos';
+        const subWarnings: any[] = Array.isArray(viewingSub.warnings) ? viewingSub.warnings : [];
 
-            {/* Isian Biodata */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider">
-                Isian Biodata Pendaftar
-              </h4>
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                {Object.entries(viewingSub.biodataValues || {}).map(([key, val]) => (
-                  <div key={key}>
-                    <p className="text-3xs font-bold text-gray-400 uppercase">{key.replace(/_/g, ' ')}</p>
-                    <p className="font-semibold text-gray-900 mt-0.5">
-                      {typeof val === 'object' ? JSON.stringify(val) : String(val || '-')}
+        // Dokumen yang wajib tapi tidak diunggah
+        const missingRequiredDocs = !isLolos
+          ? program.documentFields.filter(
+              (f) => f.required && !viewingSub.documents?.some((d) => d.fieldKey === f.key)
+            )
+          : [];
+
+        const statusBadgeMap: any = {
+          menunggu_diproses: 'bg-amber-50 text-amber-800 border-amber-200',
+          sedang_diproses: 'bg-blue-50 text-blue-800 border-blue-200',
+          belum_diseleksi: 'bg-purple-50 text-purple-800 border-purple-200',
+          lolos: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          tidak_lolos: 'bg-rose-50 text-rose-800 border-rose-200',
+          gagal_diproses: 'bg-gray-100 text-gray-800 border-gray-300',
+        };
+
+        return (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
+            onClick={() => setViewingSub(null)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-2xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto transform transition-all animate-scaleUp"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header Modal */}
+              <div className="flex items-start justify-between pb-3 border-b border-gray-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-gray-900">
+                      Detail Pendaftaran &amp; Verifikasi Berkas
+                    </h3>
+                    <span
+                      className={`px-2 py-0.5 rounded-md border text-3xs font-black uppercase tracking-wider ${
+                        statusBadgeMap[viewingSub.status] || 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {viewingSub.status.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  <p className="text-2xs text-gray-500 mt-0.5">
+                    Nama Pendaftar: <strong className="text-gray-900 text-xs font-black">{namaPendaftar}</strong> • Token:{' '}
+                    <span className="font-mono text-gray-600">{viewingSub.token}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingSub(null)}
+                  className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-800 flex items-center justify-center transition-colors cursor-pointer text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Status Seleksi Action Bar */}
+              <div className="p-3.5 bg-gray-50/90 rounded-2xl border border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <label className="block text-2xs font-extrabold uppercase text-gray-500 tracking-wider">
+                    Ubah Status Kelulusan Pendaftar:
+                  </label>
+                  <p className="text-3xs text-gray-400 mt-0.5">
+                    Memilih &ldquo;Lolos&rdquo; akan mengonfirmasi kelulusan dan menghapus tanda warning berkas.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={viewingSub.status}
+                    onChange={(e) => handleChangeSubmissionStatus(viewingSub.id, e.target.value)}
+                    disabled={isPending}
+                    className="px-3 py-1.5 rounded-xl border border-gray-300 text-xs font-bold text-gray-800 bg-white shadow-2xs focus:outline-none focus:border-[#005621] cursor-pointer"
+                  >
+                    <option value="belum_diseleksi">Belum Diseleksi</option>
+                    <option value="lolos">Lolos Seleksi</option>
+                    <option value="tidak_lolos">Tidak Lolos</option>
+                    <option value="menunggu_diproses">Menunggu Diproses</option>
+                    <option value="sedang_diproses">Sedang Diproses</option>
+                    <option value="gagal_diproses">Gagal Diproses</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Banner Status Lolos / Peringatan */}
+              {isLolos ? (
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center gap-2.5 text-xs text-emerald-900">
+                  <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-lg shrink-0" />
+                  <div>
+                    <p className="font-extrabold text-emerald-900">Pendaftar Telah Diberi Status LOLOS SELEKSI</p>
+                    <p className="text-3xs text-emerald-700 font-medium">
+                      Admin telah menyetujui kelulusan pendaftar ini. Seluruh peringatan berkas telah dikesampingkan/diverifikasi manual.
                     </p>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Berkas Upload */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider">
-                Dokumen yang Diunggah ({viewingSub.documents?.length || 0})
-              </h4>
-              <div className="space-y-2">
-                {viewingSub.documents?.map((doc) => (
-                  <div
-                    key={doc.id}
-                    className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between gap-3 text-xs"
-                  >
-                    <div>
-                      <p className="font-bold text-gray-900">{doc.fieldKey.replace(/_/g, ' ')}</p>
-                      <p className="text-3xs text-gray-500 font-mono truncate max-w-xs">{doc.originalFilename}</p>
-                    </div>
-
-                    <a
-                      href={doc.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-blue-600 hover:text-blue-800 font-bold text-2xs inline-flex items-center gap-1.5 shadow-2xs"
-                    >
-                      <FontAwesomeIcon icon={faFolderOpen} />
-                      <span>Buka File</span>
-                      <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
-                    </a>
+                </div>
+              ) : subWarnings.length > 0 ? (
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex items-start gap-2.5 text-xs text-amber-900">
+                  <FontAwesomeIcon icon={faExclamationTriangle} className="text-amber-600 text-base shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-extrabold text-amber-950">
+                      Terdapat {subWarnings.length} Catatan Verifikasi Otomatis pada Berkas
+                    </p>
+                    <p className="text-3xs text-amber-800 font-medium">
+                      Silakan periksa rincian pada berkas terkait di bawah ini sebelum menetapkan status seleksi.
+                    </p>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              ) : null}
 
-            {/* Warnings Log */}
-            {Array.isArray(viewingSub.warnings) && viewingSub.warnings.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <FontAwesomeIcon icon={faExclamationTriangle} className="text-amber-500" />
-                  Catatan Verifikasi Sistem
+              {/* Dokumen Wajib Kurang (jika ada) */}
+              {missingRequiredDocs.length > 0 && (
+                <div className="p-3.5 bg-red-50 rounded-xl border border-red-200 space-y-1.5">
+                  <p className="text-xs font-black text-red-900 flex items-center gap-1.5">
+                    <FontAwesomeIcon icon={faTimesCircle} className="text-red-500" />
+                    <span>Dokumen Wajib yang Belum Diunggah ({missingRequiredDocs.length}):</span>
+                  </p>
+                  <ul className="text-2xs text-red-800 list-disc list-inside space-y-0.5 font-medium">
+                    {missingRequiredDocs.map((m) => (
+                      <li key={m.id}>
+                        <span className="font-bold">{m.label}</span> — berkas ini wajib tetapi tidak ditemukan.
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Dokumen yang Diunggah dengan Rincian Warning Per Berkas */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <FontAwesomeIcon icon={faFileAlt} className="text-gray-500" />
+                    <span>Dokumen yang Diunggah &amp; Status Verifikasi ({viewingSub.documents?.length || 0})</span>
+                  </h4>
+                </div>
+
+                <div className="space-y-2.5">
+                  {viewingSub.documents?.map((doc) => {
+                    const fieldDef = program.documentFields.find((f) => f.key === doc.fieldKey);
+                    const docLabel = fieldDef?.label || doc.fieldKey.replace(/_/g, ' ');
+
+                    // Filter warning khusus untuk dokumen ini
+                    const docWarnings = isLolos
+                      ? []
+                      : subWarnings.filter((w) => {
+                          if (typeof w === 'object' && w.fieldKey) {
+                            return w.fieldKey === doc.fieldKey;
+                          }
+                          if (typeof w === 'string') {
+                            return (
+                              w.toLowerCase().includes(doc.fieldKey.toLowerCase()) ||
+                              (fieldDef && w.toLowerCase().includes(fieldDef.label.toLowerCase()))
+                            );
+                          }
+                          return false;
+                        });
+
+                    const hasWarning = docWarnings.length > 0;
+                    const hasNameMismatch = docWarnings.some((w) => typeof w === 'object' && w.type === 'name_mismatch');
+
+                    return (
+                      <div
+                        key={doc.id}
+                        className={`p-3.5 rounded-xl border transition-all ${
+                          isLolos
+                            ? 'bg-emerald-50/30 border-emerald-200'
+                            : hasNameMismatch
+                            ? 'bg-rose-50/50 border-rose-300 shadow-2xs'
+                            : hasWarning
+                            ? 'bg-amber-50/40 border-amber-300 shadow-2xs'
+                            : 'bg-gray-50/70 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-extrabold text-gray-900 text-xs truncate">
+                                {docLabel}
+                              </p>
+                              {fieldDef?.required && (
+                                <span className="px-1.5 py-0.2 rounded bg-red-100 text-red-700 text-3xs font-extrabold">
+                                  Wajib
+                                </span>
+                              )}
+                              {fieldDef?.nameCheckApplicable && (
+                                <span
+                                  className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-3xs font-bold"
+                                  title="Berkas ini mencakup verifikasi kesesuaian nama pendaftar"
+                                >
+                                  Cek Nama OCR
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-3xs text-gray-500 font-mono truncate mt-0.5">
+                              {doc.originalFilename}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            {/* Label status per file */}
+                            {isLolos ? (
+                              <span className="px-2 py-0.5 rounded-lg text-3xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                                <FontAwesomeIcon icon={faCheckCircle} />
+                                <span>Lolos</span>
+                              </span>
+                            ) : hasNameMismatch ? (
+                              <span className="px-2 py-0.5 rounded-lg text-3xs font-black bg-rose-100 text-rose-900 border border-rose-300 inline-flex items-center gap-1">
+                                <FontAwesomeIcon icon={faTimesCircle} className="text-rose-600" />
+                                <span>Nama Tidak Sesuai</span>
+                              </span>
+                            ) : hasWarning ? (
+                              <span className="px-2 py-0.5 rounded-lg text-3xs font-black bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                                <FontAwesomeIcon icon={faExclamationTriangle} className="text-amber-600" />
+                                <span>{docWarnings.length} Catatan</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-lg text-3xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                                <FontAwesomeIcon icon={faCheckCircle} />
+                                <span>Sesuai</span>
+                              </span>
+                            )}
+
+                            <a
+                              href={doc.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-blue-600 hover:text-blue-800 font-bold text-2xs inline-flex items-center gap-1 shadow-2xs transition-colors"
+                            >
+                              <FontAwesomeIcon icon={faFolderOpen} />
+                              <span>Buka File</span>
+                              <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
+                            </a>
+                          </div>
+                        </div>
+
+                        {/* Rincian catatan untuk dokumen spesifik ini */}
+                        {hasWarning && (
+                          <div className={`mt-2.5 p-2.5 rounded-lg border space-y-1 ${
+                            hasNameMismatch ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200/80'
+                          }`}>
+                            <p className={`text-3xs font-black uppercase tracking-wider flex items-center gap-1 ${
+                              hasNameMismatch ? 'text-rose-950' : 'text-amber-950'
+                            }`}>
+                              <FontAwesomeIcon icon={faExclamationTriangle} className={hasNameMismatch ? 'text-rose-600' : 'text-amber-600'} />
+                              <span>Catatan Verifikasi Berkas Ini:</span>
+                            </p>
+                            <div className="space-y-1 pt-0.5">
+                              {docWarnings.map((w: any, widx: number) => {
+                                const isMismatch = typeof w === 'object' && w.type === 'name_mismatch';
+                                return (
+                                  <div
+                                    key={widx}
+                                    className={`flex items-start gap-1.5 text-2xs leading-relaxed ${
+                                      isMismatch
+                                        ? 'text-rose-900 font-bold bg-white/70 p-1.5 rounded border border-rose-200'
+                                        : 'text-amber-900 font-medium'
+                                    }`}
+                                  >
+                                    <span className={`${isMismatch ? 'text-rose-600' : 'text-amber-500'} font-bold shrink-0`}>•</span>
+                                    <span>{typeof w === 'string' ? w : w.message || JSON.stringify(w)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Unduh PDF Gabungan jika tersedia */}
+              {viewingSub.linkDokumenGabungan && (
+                <a
+                  href={viewingSub.linkDokumenGabungan}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <FontAwesomeIcon icon={faFilePdf} className="text-red-500 text-sm" />
+                  <span>Unduh Seluruh Berkas Gabungan (PDF Master)</span>
+                  <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
+                </a>
+              )}
+
+              {/* Isian Biodata Pendaftar */}
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <FontAwesomeIcon icon={faUserTag} className="text-gray-500" />
+                  <span>Isian Biodata Pendaftar</span>
                 </h4>
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-1 text-xs text-amber-900">
-                  {viewingSub.warnings.map((w: any, idx: number) => (
-                    <p key={idx}>• {typeof w === 'string' ? w : w.message || JSON.stringify(w)}</p>
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {Object.entries(viewingSub.biodataValues || {}).map(([key, val]) => (
+                    <div key={key}>
+                      <p className="text-3xs font-bold text-gray-400 uppercase">{key.replace(/_/g, ' ')}</p>
+                      <p className="font-semibold text-gray-900 mt-0.5">
+                        {typeof val === 'object' ? JSON.stringify(val) : String(val || '-')}
+                      </p>
+                    </div>
                   ))}
                 </div>
               </div>
-            )}
 
-            <div className="pt-2 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => setViewingSub(null)}
-                className="px-4 py-2 rounded-xl bg-gray-900 text-white font-bold text-xs hover:bg-gray-800 cursor-pointer"
-              >
-                Tutup
-              </button>
+              {/* Footer Modal */}
+              <div className="pt-3 flex items-center justify-end border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setViewingSub(null)}
+                  className="px-4 py-2 rounded-xl bg-gray-900 text-white font-bold text-xs hover:bg-gray-800 cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ================================================================= */}
       {/* MODAL: KONFIRMASI HAPUS FIELD                                    */}

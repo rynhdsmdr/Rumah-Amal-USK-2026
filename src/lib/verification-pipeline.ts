@@ -1,6 +1,7 @@
 import { closest, distance } from 'fastest-levenshtein';
 import { PDFDocument } from 'pdf-lib';
-import Tesseract from 'tesseract.js';
+import { createWorker } from 'tesseract.js';
+import path from 'path';
 
 export interface VerificationWarning {
   fieldKey: string;
@@ -121,68 +122,145 @@ export function checkDocumentMaxAge(
 }
 
 /**
- * 3. Pengecekan Kecocokan Nama Pendaftar (Fuzzy Matching)
- * Menggunakan fastest-levenshtein untuk toleransi salah baca OCR
+ * 3. Pengecekan Kecocokan Nama Pendaftar (Fuzzy Matching & OCR Normalization)
+ * Menggunakan fastest-levenshtein dan normalisasi token untuk toleransi salah baca OCR & singkatan
  */
 export function checkApplicantNameMatch(
   ocrText: string,
   applicantName: string
-): { matches: boolean; similarityScore: number; bestMatchCandidate?: string } {
+): { matches: boolean; similarityScore: number; bestMatchCandidate?: string; reason?: string } {
   if (!applicantName || !applicantName.trim()) {
-    return { matches: true, similarityScore: 1 };
+    return { matches: true, similarityScore: 1, reason: 'Nama pendaftar tidak diisi' };
   }
 
-  const cleanTarget = applicantName.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-  const targetWords = cleanTarget.split(/\s+/).filter((w) => w.length > 2);
+  // 1. Normalisasi nama pendaftar (lowercase, hapus tanda baca, satukan spasi)
+  const cleanTarget = applicantName
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
+  // Validasi jika nama input terlalu pendek (misal dummy 1-2 huruf "a", "b")
+  if (cleanTarget.length < 3) {
+    return {
+      matches: false,
+      similarityScore: 0,
+      reason: `Nama pendaftar "${applicantName}" terlalu pendek (minimal 3 karakter) untuk validasi otomatis.`,
+    };
+  }
+
+  const targetWords = cleanTarget.split(' ').filter((w) => w.length >= 2);
   if (targetWords.length === 0) {
-    return { matches: true, similarityScore: 1 };
+    return {
+      matches: false,
+      similarityScore: 0,
+      reason: `Nama pendaftar "${applicantName}" tidak valid untuk dicocokkan.`,
+    };
   }
 
-  // Bersihkan teks OCR per baris & token kata
+  // Normalisasi seluruh teks OCR (lowercase, hapus karakter aneh, satukan whitespace/newline)
+  const normalizedOcr = ocrText
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  // 2. Exact match substring langsung pada teks OCR yang telah dinormalisasi
+  if (normalizedOcr.includes(cleanTarget)) {
+    return {
+      matches: true,
+      similarityScore: 1.0,
+      bestMatchCandidate: applicantName,
+      reason: `Nama "${applicantName}" cocok sempurna pada dokumen.`,
+    };
+  }
+
+  // 3. Token-level fuzzy matching per kata nama pendaftar
+  const ocrWords = normalizedOcr.split(' ').filter((w) => w.length >= 1);
+
+  let matchedWordCount = 0;
+  const matchedTokens: string[] = [];
+
+  for (const tWord of targetWords) {
+    let bestWordRatio = 0;
+    let bestCandidate = '';
+
+    for (const oWord of ocrWords) {
+      if (tWord === oWord) {
+        bestWordRatio = 1.0;
+        bestCandidate = oWord;
+        break;
+      }
+
+      // Dukungan inisial/singkatan (misal 'r' vs 'rivaldi' atau 'm' vs 'muhammad')
+      if (
+        (tWord.length === 1 && oWord.startsWith(tWord)) ||
+        (oWord.length === 1 && tWord.startsWith(oWord))
+      ) {
+        if (bestWordRatio < 0.75) {
+          bestWordRatio = 0.75;
+          bestCandidate = oWord;
+        }
+      }
+
+      const dist = distance(tWord, oWord);
+      const maxL = Math.max(tWord.length, oWord.length);
+      const ratio = maxL > 0 ? (maxL - dist) / maxL : 0;
+      if (ratio > bestWordRatio) {
+        bestWordRatio = ratio;
+        bestCandidate = oWord;
+      }
+    }
+
+    // Toleransi salah baca OCR: ratio >= 0.70 (misal 'rvan' vs 'ryan' = 0.75, 'h1dayat' vs 'hidayat' = 0.85)
+    if (bestWordRatio >= 0.7) {
+      matchedWordCount++;
+      matchedTokens.push(bestCandidate);
+    }
+  }
+
+  const wordMatchRatio = matchedWordCount / targetWords.length;
+
+  // 4. Cek per baris untuk mencari kandidat baris terbaik
   const lines = ocrText
     .toLowerCase()
     .split('\n')
-    .map((l) => l.replace(/[^a-z0-9\s]/g, ' ').trim())
+    .map((l) => l.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim())
     .filter(Boolean);
 
-  let bestRatio = 0;
-  let candidateFound = '';
-
-  // 1. Cek string exact substring atau baris kemiripan
+  let bestLineRatio = 0;
+  let bestLineCandidate = '';
   for (const line of lines) {
-    if (line.includes(cleanTarget)) {
-      return { matches: true, similarityScore: 1.0, bestMatchCandidate: line };
-    }
-
-    // Levenshtein ratio: 1 - (dist / max(len1, len2))
     const dist = distance(cleanTarget, line);
     const maxLen = Math.max(cleanTarget.length, line.length);
     const ratio = maxLen > 0 ? (maxLen - dist) / maxLen : 0;
-
-    if (ratio > bestRatio) {
-      bestRatio = ratio;
-      candidateFound = line;
+    if (ratio > bestLineRatio) {
+      bestLineRatio = ratio;
+      bestLineCandidate = line;
     }
   }
 
-  // 2. Cek kecocokan per kata kunci nama (misal nama 3 kata, min 2 kata ditemukan)
-  let wordMatches = 0;
-  for (const word of targetWords) {
-    if (ocrText.toLowerCase().includes(word)) {
-      wordMatches++;
-    }
+  // Ambang batas kelolosan:
+  // - 1 kata: harus cocok 100% atau baris cocok >= 0.75
+  // - 2 kata: minimal 75% kata cocok atau baris cocok >= 0.65
+  // - >= 3 kata: minimal 60% kata cocok atau baris cocok >= 0.65
+  let matches = false;
+  if (targetWords.length === 1) {
+    matches = wordMatchRatio >= 1.0 || bestLineRatio >= 0.75;
+  } else if (targetWords.length === 2) {
+    matches = wordMatchRatio >= 0.75 || bestLineRatio >= 0.65;
+  } else {
+    matches = wordMatchRatio >= 0.6 || bestLineRatio >= 0.65;
   }
 
-  const wordMatchRatio = wordMatches / targetWords.length;
-
-  // Ambang batas toleransi: kata cocok >= 60% ATAU ratio baris >= 0.70
-  const matches = wordMatchRatio >= 0.6 || bestRatio >= 0.7;
+  const finalScore = Math.max(wordMatchRatio, bestLineRatio);
 
   return {
     matches,
-    similarityScore: Math.max(bestRatio, wordMatchRatio),
-    bestMatchCandidate: candidateFound,
+    similarityScore: Math.round(finalScore * 100) / 100,
+    bestMatchCandidate: matchedTokens.join(' ') || bestLineCandidate,
+    reason: matches
+      ? `Nama terverifikasi cocok (${Math.round(finalScore * 100)}% kesamaan).`
+      : `Nama pendaftar "${applicantName}" tidak terdeteksi pada teks berkas (${Math.round(finalScore * 100)}% kesamaan).`,
   };
 }
 
@@ -196,14 +274,46 @@ export async function runOcrOnBuffer(buffer: Buffer, mimeType: string): Promise<
     return '';
   }
 
+  let worker: any = null;
   try {
-    const result = await Tesseract.recognize(buffer, 'ind+eng', {
-      logger: () => {},
-    });
-    return result.data.text || '';
+    const ocrExecution = (async () => {
+      const workerPath = path.join(
+        process.cwd(),
+        'node_modules',
+        'tesseract.js',
+        'src',
+        'worker-script',
+        'node',
+        'index.js'
+      );
+      worker = await createWorker('ind+eng', 1, {
+        workerPath,
+        logger: () => {},
+      });
+      const result = await worker.recognize(buffer);
+      return result.data.text || '';
+    })();
+
+    // Pasang safety timeout 25 detik agar OCR tidak pernah menggantung server
+    const timeoutPromise = new Promise<string>((resolve) =>
+      setTimeout(() => {
+        console.warn('[Tesseract OCR] Timeout 25 detik terlampaui, melanjutkan proses berkas.');
+        resolve('');
+      }, 25000)
+    );
+
+    return await Promise.race([ocrExecution, timeoutPromise]);
   } catch (err) {
     console.error('[Tesseract OCR Error]', err);
     return '';
+  } finally {
+    if (worker) {
+      try {
+        await worker.terminate();
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 

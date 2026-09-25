@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
 
 interface Mitra {
   id: string;
@@ -37,6 +36,30 @@ const DEFAULT_MITRAS: Mitra[] = [
     imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Bank_Syariah_Indonesia.svg/1024px-Bank_Syariah_Indonesia.svg.png",
   },
 ];
+
+function MitraItem({ item }: { item: Mitra }) {
+  const [hasError, setHasError] = useState(false);
+
+  return (
+    <div
+      className="flex items-center justify-center min-w-[140px] sm:min-w-[180px] h-16 sm:h-20 px-4 py-2 transition-transform duration-300 hover:scale-110 cursor-pointer"
+      title={item.nama}
+    >
+      {hasError || !item.imageUrl ? (
+        <span className="font-bold text-gray-700 text-sm md:text-base border border-gray-200 rounded-lg px-4 py-2 bg-gray-50 whitespace-nowrap shadow-xs">
+          {item.nama}
+        </span>
+      ) : (
+        <img
+          src={item.imageUrl}
+          alt={item.nama}
+          className="max-h-12 sm:max-h-16 max-w-[160px] sm:max-w-[200px] w-auto h-auto object-contain filter drop-shadow-xs"
+          onError={() => setHasError(true)}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function MitraSection() {
   const [mitras, setMitras] = useState<Mitra[]>([]);
@@ -99,27 +122,7 @@ export default function MitraSection() {
             {/* Continuous Marquee Track */}
             <div className="flex w-max animate-marquee items-center gap-10 sm:gap-14 md:gap-20 py-4">
               {marqueeList.map((item, idx) => (
-                <div
-                  key={`${item.id}-${idx}`}
-                  className="flex items-center justify-center min-w-[140px] sm:min-w-[180px] h-16 sm:h-20 px-4 py-2 transition-transform duration-300 hover:scale-110 cursor-pointer"
-                  title={item.nama}
-                >
-                  <img
-                    src={item.imageUrl}
-                    alt={item.nama}
-                    className="max-h-12 sm:max-h-16 max-w-[160px] sm:max-w-[200px] w-auto h-auto object-contain filter drop-shadow-xs"
-                    onError={(e) => {
-                      // Fallback text if image load fails
-                      const target = e.target as HTMLElement;
-                      target.style.display = "none";
-                      if (target.parentElement) {
-                        target.parentElement.innerText = item.nama;
-                        target.parentElement.className =
-                          "font-bold text-gray-700 text-sm md:text-base border border-gray-200 rounded-lg px-4 py-2 bg-gray-50";
-                      }
-                    }}
-                  />
-                </div>
+                <MitraItem key={`${item.id}-${idx}`} item={item} />
               ))}
             </div>
           </div>

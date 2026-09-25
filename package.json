@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --max-old-space-size=4096 ./node_modules/next/dist/bin/next dev",
     "prisma:generate": "prisma generate && prisma generate --schema=prisma/registration.prisma",
     "prisma:neon:push": "prisma db push --schema=prisma/registration.prisma",
     "build": "npm run prisma:generate && next build",

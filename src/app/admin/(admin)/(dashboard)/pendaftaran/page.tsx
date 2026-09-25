@@ -19,6 +19,7 @@ export default async function AdminPendaftaranPage(props: {
         initialPrograms={programs}
         initialSearch={search}
         initialStatus={status}
+        errorMessage={!res.success ? res.error : undefined}
       />
     </div>
   );

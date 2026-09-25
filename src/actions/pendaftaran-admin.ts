@@ -2,6 +2,7 @@
 
 import { neonPrisma } from '@/lib/neon-prisma';
 import { revalidatePath } from 'next/cache';
+import { executeQueueProcessing } from '@/lib/worker-queue';
 
 // Helper slugify
 function generateSlug(text: string): string {
@@ -534,34 +535,45 @@ export async function updateSubmissionStatus(submissionId: string, newStatus: st
   }
 }
 
+export async function updateMultipleSubmissionsStatus(
+  submissionIds: string[],
+  newStatus: string,
+  programId?: string
+) {
+  try {
+    if (!submissionIds || submissionIds.length === 0) {
+      return { success: false, error: 'Tidak ada pendaftar yang dipilih.' };
+    }
+
+    const updated = await neonPrisma.submission.updateMany({
+      where: { id: { in: submissionIds } },
+      data: { status: newStatus },
+    });
+
+    if (programId) {
+      revalidatePath(`/admin/pendaftaran/${programId}`);
+    } else {
+      revalidatePath('/admin/pendaftaran');
+    }
+
+    return { success: true, count: updated.count };
+  } catch (error: any) {
+    console.error('[updateMultipleSubmissionsStatus error]', error);
+    return { success: false, error: error.message || 'Gagal memperbarui status pendaftar terpilih.' };
+  }
+}
+
 // =======================================================================
 // 5. TRIGGER WORKER MANUAL
 // =======================================================================
 
 export async function triggerWorkerManual() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const cronSecret = process.env.CRON_SECRET || 'secret';
-
-    const res = await fetch(`${baseUrl}/api/worker/proses-antrean`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${cronSecret}`,
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      return { success: false, error: `Worker error (${res.status}): ${errorText}` };
-    }
-
-    const data = await res.json();
+    const data = await executeQueueProcessing();
     revalidatePath('/admin/pendaftaran');
     return { success: true, data };
   } catch (error: any) {
     console.error('[triggerWorkerManual error]', error);
-    return { success: false, error: error.message || 'Gagal memicu worker antrean.' };
+    return { success: false, error: error.message || 'Gagal memproses antrean worker.' };
   }
 }

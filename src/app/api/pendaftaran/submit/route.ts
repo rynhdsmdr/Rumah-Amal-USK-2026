@@ -103,8 +103,8 @@ export async function POST(req: NextRequest) {
 
     const folderTag = `${applicantName.slice(0, 30)} - ${submission.token.slice(0, 8)}`;
 
-    // 6. Upload file ke Google Drive (atau fallback lokal) secara paralel
-    const uploadPromises = filesToUpload.map(async ({ field, file }) => {
+    // 6. Upload file ke Google Drive (atau fallback lokal) secara sekuensial hemat memori
+    for (const { field, file } of filesToUpload) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
       });
 
       // Simpan record SubmissionDocument
-      return neonPrisma.submissionDocument.create({
+      await neonPrisma.submissionDocument.create({
         data: {
           submissionId: submission.id,
           documentFieldId: field.id,
@@ -129,9 +129,7 @@ export async function POST(req: NextRequest) {
           mimeType: file.type,
         },
       });
-    });
-
-    await Promise.all(uploadPromises);
+    }
 
     // 7. Respon sukses cepat ke pendaftar
     return NextResponse.json({

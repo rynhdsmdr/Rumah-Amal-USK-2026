@@ -23,7 +23,7 @@ interface AdminToastProps {
 export default function AdminToast({
   toast,
   onClose,
-  duration = 3500,
+  duration = 4500,
 }: AdminToastProps) {
   useEffect(() => {
     if (!toast) return;
@@ -48,13 +48,13 @@ export default function AdminToast({
   };
 
   return (
-    <div className="fixed top-5 right-5 z-50 max-w-sm w-full animate-slideInDown">
+    <div className="fixed top-5 right-5 z-[9999] max-w-sm w-full animate-slideInDown">
       <div
         className={`px-4 py-3 rounded-2xl border shadow-xl backdrop-blur-md flex items-center justify-between gap-3 text-xs font-semibold ${bgMap[toast.type]}`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="shrink-0">{iconMap[toast.type]}</span>
-          <span className="leading-snug truncate">{toast.message}</span>
+          <span className="leading-snug">{toast.message}</span>
         </div>
         <button
           type="button"

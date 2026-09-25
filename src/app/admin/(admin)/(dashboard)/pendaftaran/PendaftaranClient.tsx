@@ -54,12 +54,14 @@ interface Props {
   initialPrograms: ProgramItem[];
   initialSearch: string;
   initialStatus: string;
+  errorMessage?: string;
 }
 
 export default function PendaftaranClient({
   initialPrograms,
   initialSearch,
   initialStatus,
+  errorMessage,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -250,6 +252,17 @@ export default function PendaftaranClient({
     <div className="space-y-6 animate-fadeIn">
       {/* Toast Notifikasi */}
       <AdminToast toast={toast} onClose={() => setToast(null)} />
+
+      {/* Alert Error jika query gagal */}
+      {errorMessage && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl text-xs font-semibold flex items-center gap-3 shadow-xs">
+          <FontAwesomeIcon icon={faExclamationTriangle} className="text-red-500 text-base shrink-0" />
+          <div>
+            <p className="font-bold">Gagal memuat data dari database Neon:</p>
+            <p className="text-red-600 mt-0.5">{errorMessage}</p>
+          </div>
+        </div>
+      )}
 
       {/* Header Utama & Tombol Aksi */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs">

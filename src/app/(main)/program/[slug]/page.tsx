@@ -21,6 +21,14 @@ interface ProgramDetail {
   createdAt: string;
 }
 
+interface RegistrationInfo {
+  hasRegistration: boolean;
+  isOpen: boolean;
+  registrationSlug: string;
+  programName: string;
+  tanggalTutup?: string | null;
+}
+
 type Language = 'id' | 'en' | 'ar';
 
 export default function PublicProgramDetailPage({
@@ -31,6 +39,7 @@ export default function PublicProgramDetailPage({
   const { slug } = use(params);
 
   const [program, setProgram] = useState<ProgramDetail | null>(null);
+  const [registrationInfo, setRegistrationInfo] = useState<RegistrationInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<Language>('id');
 
@@ -72,6 +81,19 @@ export default function PublicProgramDetailPage({
             fetch(`/api/program/${found.id}/views`, { method: 'POST' }).catch(() => {});
           }
         }
+      }
+
+      // Periksa apakah program ini memiliki formulir pendaftaran beasiswa/bantuan di database Neon
+      try {
+        const checkRes = await fetch(`/api/pendaftaran/check-by-slug?slug=${encodeURIComponent(slug)}`);
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData.hasRegistration) {
+            setRegistrationInfo(checkData);
+          }
+        }
+      } catch (checkErr) {
+        console.error('Error checking registration info:', checkErr);
       }
     } catch (err) {
       console.error('Error fetching program detail:', err);
@@ -292,6 +314,74 @@ export default function PublicProgramDetailPage({
               dangerouslySetInnerHTML={{ __html: displayContent || '<p class="text-gray-400 italic text-center py-4">(Belum ada konten dalam bahasa ini)</p>' }}
             />
           </div>
+
+          {/* CTA Banner Pendaftaran Program */}
+          {registrationInfo && (
+            <div className="my-8 rounded-3xl overflow-hidden bg-gradient-to-br from-[#063A1E] via-[#0b6330] to-[#005621] text-white p-6 sm:p-8 shadow-xl border border-emerald-600/30 relative">
+              <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white/5 rounded-full blur-2xl pointer-events-none" />
+              <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div className="space-y-2 flex-1">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-white/15 backdrop-blur-xs text-[#ffc800] border border-white/10">
+                    <span className={`w-2 h-2 rounded-full ${registrationInfo.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                    {registrationInfo.isOpen
+                      ? (lang === 'ar' ? 'التسجيل مفتوح' : lang === 'en' ? 'Registration Open' : 'Pendaftaran Dibuka')
+                      : (lang === 'ar' ? 'التسجيل مغلق' : lang === 'en' ? 'Registration Closed' : 'Pendaftaran Ditutup')}
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                    {lang === 'ar'
+                      ? `هل ترغب في التسجيل في ${registrationInfo.programName}؟`
+                      : lang === 'en'
+                      ? `Interested in Applying for ${registrationInfo.programName}?`
+                      : `Tertarik Mendaftar ${registrationInfo.programName}?`}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-white/80 leading-relaxed max-w-xl">
+                    {registrationInfo.isOpen
+                      ? (lang === 'ar'
+                        ? 'استمارة التقديم عبر الإنترنت وتحميل المستندات المطلوبة متاحة الآن. يرجى إكمال بياناتك ومستنداتك.'
+                        : lang === 'en'
+                        ? 'Online application and document submission are now open. Please complete your biodata and required files.'
+                        : 'Formulir pendaftaran daring dan pengunggahan berkas persyaratan kini telah dibuka. Silakan klik tombol di bawah untuk melengkapi biodata dan berkas Anda.')
+                      : (lang === 'ar'
+                        ? 'التسجيل في هذا البرنامج مغلق حالياً.'
+                        : lang === 'en'
+                        ? 'Registration for this program is currently closed.'
+                        : 'Pendaftaran untuk program ini saat ini sedang tidak dibuka.')}
+                  </p>
+                  {registrationInfo.tanggalTutup && registrationInfo.isOpen && (
+                    <p className="text-xs font-semibold text-[#ffc800] flex items-center gap-1.5 pt-1">
+                      <span>⏳</span>
+                      <span>
+                        {lang === 'ar' ? 'الموعد النهائي: ' : lang === 'en' ? 'Deadline: ' : 'Batas Akhir: '}
+                        {new Date(registrationInfo.tanggalTutup).toLocaleDateString(lang === 'ar' ? 'ar-SA' : lang === 'en' ? 'en-US' : 'id-ID', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </p>
+                  )}
+                </div>
+
+                {registrationInfo.isOpen ? (
+                  <Link
+                    href={`/pendaftaran/${registrationInfo.registrationSlug}`}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#f5b016] hover:bg-[#ffc800] text-[#063A1E] font-extrabold text-sm sm:text-base shadow-lg hover:shadow-xl hover:scale-[1.03] active:scale-[0.98] transition-all duration-200 whitespace-nowrap cursor-pointer self-stretch md:self-auto"
+                  >
+                    <span>
+                      {lang === 'ar' ? 'سجل الآن' : lang === 'en' ? 'Apply Now' : 'Daftar Program Sekarang'}
+                    </span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                  </Link>
+                ) : (
+                  <span className="px-5 py-3 rounded-xl bg-white/10 text-white/60 font-semibold text-sm cursor-not-allowed">
+                    {lang === 'ar' ? 'التسجيل مغلق' : lang === 'en' ? 'Closed' : 'Pendaftaran Ditutup'}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Jumlah Pembaca / Views Count */}
           <div className="flex items-center gap-2 text-gray-600 text-sm font-semibold pt-6 mb-6 border-t border-gray-100" title="Jumlah Pembaca / Views">
