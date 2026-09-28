@@ -15,6 +15,7 @@ model ProgramBantuan {
   id                String          @id @default(cuid())
   nama              String
   slug              String          @unique
+  kategori          String          @default("PENDIDIKAN")
   deskripsi         String?         @db.Text
   gambarUrl         String?         @map("gambar_url")
   status            String          @default("draft") // draft | dibuka | ditutup

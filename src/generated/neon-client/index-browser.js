@@ -124,6 +124,7 @@ exports.Prisma.ProgramBantuanScalarFieldEnum = {
   id: 'id',
   nama: 'nama',
   slug: 'slug',
+  kategori: 'kategori',
   deskripsi: 'deskripsi',
   gambarUrl: 'gambarUrl',
   status: 'status',

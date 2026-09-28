@@ -1382,6 +1382,7 @@ export namespace Prisma {
     id: string | null
     nama: string | null
     slug: string | null
+    kategori: string | null
     deskripsi: string | null
     gambarUrl: string | null
     status: string | null
@@ -1396,6 +1397,7 @@ export namespace Prisma {
     id: string | null
     nama: string | null
     slug: string | null
+    kategori: string | null
     deskripsi: string | null
     gambarUrl: string | null
     status: string | null
@@ -1410,6 +1412,7 @@ export namespace Prisma {
     id: number
     nama: number
     slug: number
+    kategori: number
     deskripsi: number
     gambarUrl: number
     status: number
@@ -1426,6 +1429,7 @@ export namespace Prisma {
     id?: true
     nama?: true
     slug?: true
+    kategori?: true
     deskripsi?: true
     gambarUrl?: true
     status?: true
@@ -1440,6 +1444,7 @@ export namespace Prisma {
     id?: true
     nama?: true
     slug?: true
+    kategori?: true
     deskripsi?: true
     gambarUrl?: true
     status?: true
@@ -1454,6 +1459,7 @@ export namespace Prisma {
     id?: true
     nama?: true
     slug?: true
+    kategori?: true
     deskripsi?: true
     gambarUrl?: true
     status?: true
@@ -1541,6 +1547,7 @@ export namespace Prisma {
     id: string
     nama: string
     slug: string
+    kategori: string
     deskripsi: string | null
     gambarUrl: string | null
     status: string
@@ -1572,6 +1579,7 @@ export namespace Prisma {
     id?: boolean
     nama?: boolean
     slug?: boolean
+    kategori?: boolean
     deskripsi?: boolean
     gambarUrl?: boolean
     status?: boolean
@@ -1590,6 +1598,7 @@ export namespace Prisma {
     id?: boolean
     nama?: boolean
     slug?: boolean
+    kategori?: boolean
     deskripsi?: boolean
     gambarUrl?: boolean
     status?: boolean
@@ -1604,6 +1613,7 @@ export namespace Prisma {
     id?: boolean
     nama?: boolean
     slug?: boolean
+    kategori?: boolean
     deskripsi?: boolean
     gambarUrl?: boolean
     status?: boolean
@@ -1618,6 +1628,7 @@ export namespace Prisma {
     id?: boolean
     nama?: boolean
     slug?: boolean
+    kategori?: boolean
     deskripsi?: boolean
     gambarUrl?: boolean
     status?: boolean
@@ -1628,7 +1639,7 @@ export namespace Prisma {
     updatedAt?: boolean
   }
 
-  export type ProgramBantuanOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "nama" | "slug" | "deskripsi" | "gambarUrl" | "status" | "tanggalBuka" | "tanggalTutup" | "linkDriveTemplate" | "createdAt" | "updatedAt", ExtArgs["result"]["programBantuan"]>
+  export type ProgramBantuanOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "nama" | "slug" | "kategori" | "deskripsi" | "gambarUrl" | "status" | "tanggalBuka" | "tanggalTutup" | "linkDriveTemplate" | "createdAt" | "updatedAt", ExtArgs["result"]["programBantuan"]>
   export type ProgramBantuanInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     documentFields?: boolean | ProgramBantuan$documentFieldsArgs<ExtArgs>
     biodataFields?: boolean | ProgramBantuan$biodataFieldsArgs<ExtArgs>
@@ -1649,6 +1660,7 @@ export namespace Prisma {
       id: string
       nama: string
       slug: string
+      kategori: string
       deskripsi: string | null
       gambarUrl: string | null
       status: string
@@ -2086,6 +2098,7 @@ export namespace Prisma {
     readonly id: FieldRef<"ProgramBantuan", 'String'>
     readonly nama: FieldRef<"ProgramBantuan", 'String'>
     readonly slug: FieldRef<"ProgramBantuan", 'String'>
+    readonly kategori: FieldRef<"ProgramBantuan", 'String'>
     readonly deskripsi: FieldRef<"ProgramBantuan", 'String'>
     readonly gambarUrl: FieldRef<"ProgramBantuan", 'String'>
     readonly status: FieldRef<"ProgramBantuan", 'String'>
@@ -7375,6 +7388,7 @@ export namespace Prisma {
     id: 'id',
     nama: 'nama',
     slug: 'slug',
+    kategori: 'kategori',
     deskripsi: 'deskripsi',
     gambarUrl: 'gambarUrl',
     status: 'status',
@@ -7591,6 +7605,7 @@ export namespace Prisma {
     id?: StringFilter<"ProgramBantuan"> | string
     nama?: StringFilter<"ProgramBantuan"> | string
     slug?: StringFilter<"ProgramBantuan"> | string
+    kategori?: StringFilter<"ProgramBantuan"> | string
     deskripsi?: StringNullableFilter<"ProgramBantuan"> | string | null
     gambarUrl?: StringNullableFilter<"ProgramBantuan"> | string | null
     status?: StringFilter<"ProgramBantuan"> | string
@@ -7608,6 +7623,7 @@ export namespace Prisma {
     id?: SortOrder
     nama?: SortOrder
     slug?: SortOrder
+    kategori?: SortOrder
     deskripsi?: SortOrderInput | SortOrder
     gambarUrl?: SortOrderInput | SortOrder
     status?: SortOrder
@@ -7628,6 +7644,7 @@ export namespace Prisma {
     OR?: ProgramBantuanWhereInput[]
     NOT?: ProgramBantuanWhereInput | ProgramBantuanWhereInput[]
     nama?: StringFilter<"ProgramBantuan"> | string
+    kategori?: StringFilter<"ProgramBantuan"> | string
     deskripsi?: StringNullableFilter<"ProgramBantuan"> | string | null
     gambarUrl?: StringNullableFilter<"ProgramBantuan"> | string | null
     status?: StringFilter<"ProgramBantuan"> | string
@@ -7645,6 +7662,7 @@ export namespace Prisma {
     id?: SortOrder
     nama?: SortOrder
     slug?: SortOrder
+    kategori?: SortOrder
     deskripsi?: SortOrderInput | SortOrder
     gambarUrl?: SortOrderInput | SortOrder
     status?: SortOrder
@@ -7665,6 +7683,7 @@ export namespace Prisma {
     id?: StringWithAggregatesFilter<"ProgramBantuan"> | string
     nama?: StringWithAggregatesFilter<"ProgramBantuan"> | string
     slug?: StringWithAggregatesFilter<"ProgramBantuan"> | string
+    kategori?: StringWithAggregatesFilter<"ProgramBantuan"> | string
     deskripsi?: StringNullableWithAggregatesFilter<"ProgramBantuan"> | string | null
     gambarUrl?: StringNullableWithAggregatesFilter<"ProgramBantuan"> | string | null
     status?: StringWithAggregatesFilter<"ProgramBantuan"> | string
@@ -8051,6 +8070,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -8068,6 +8088,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -8085,6 +8106,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -8102,6 +8124,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -8119,6 +8142,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -8133,6 +8157,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -8147,6 +8172,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -8664,6 +8690,7 @@ export namespace Prisma {
     id?: SortOrder
     nama?: SortOrder
     slug?: SortOrder
+    kategori?: SortOrder
     deskripsi?: SortOrder
     gambarUrl?: SortOrder
     status?: SortOrder
@@ -8678,6 +8705,7 @@ export namespace Prisma {
     id?: SortOrder
     nama?: SortOrder
     slug?: SortOrder
+    kategori?: SortOrder
     deskripsi?: SortOrder
     gambarUrl?: SortOrder
     status?: SortOrder
@@ -8692,6 +8720,7 @@ export namespace Prisma {
     id?: SortOrder
     nama?: SortOrder
     slug?: SortOrder
+    kategori?: SortOrder
     deskripsi?: SortOrder
     gambarUrl?: SortOrder
     status?: SortOrder
@@ -9895,6 +9924,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -9911,6 +9941,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -9985,6 +10016,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -10001,6 +10033,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -10053,6 +10086,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -10069,6 +10103,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -10101,6 +10136,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -10117,6 +10153,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -10133,6 +10170,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -10149,6 +10187,7 @@ export namespace Prisma {
     id?: string
     nama: string
     slug: string
+    kategori?: string
     deskripsi?: string | null
     gambarUrl?: string | null
     status?: string
@@ -10223,6 +10262,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string
@@ -10239,6 +10279,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     nama?: StringFieldUpdateOperationsInput | string
     slug?: StringFieldUpdateOperationsInput | string
+    kategori?: StringFieldUpdateOperationsInput | string
     deskripsi?: NullableStringFieldUpdateOperationsInput | string | null
     gambarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     status?: StringFieldUpdateOperationsInput | string

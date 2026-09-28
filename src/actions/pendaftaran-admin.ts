@@ -85,6 +85,7 @@ export async function getProgramBantuanById(id: string) {
 export async function createProgramBantuan(formData: {
   nama: string;
   slug?: string;
+  kategori?: string;
   deskripsi?: string;
   gambarUrl?: string;
   status?: string;
@@ -107,6 +108,7 @@ export async function createProgramBantuan(formData: {
       data: {
         nama: formData.nama.trim(),
         slug,
+        kategori: formData.kategori?.trim() || 'PENDIDIKAN',
         deskripsi: formData.deskripsi?.trim() || null,
         gambarUrl: formData.gambarUrl?.trim() || null,
         status: formData.status || 'draft',
@@ -129,6 +131,7 @@ export async function updateProgramBantuan(
   formData: {
     nama?: string;
     slug?: string;
+    kategori?: string;
     deskripsi?: string;
     gambarUrl?: string;
     status?: string;
@@ -140,6 +143,7 @@ export async function updateProgramBantuan(
   try {
     const updateData: any = {};
     if (formData.nama !== undefined) updateData.nama = formData.nama.trim();
+    if (formData.kategori !== undefined) updateData.kategori = formData.kategori.trim();
     if (formData.deskripsi !== undefined) updateData.deskripsi = formData.deskripsi.trim() || null;
     if (formData.gambarUrl !== undefined) updateData.gambarUrl = formData.gambarUrl.trim() || null;
     if (formData.status !== undefined) updateData.status = formData.status;

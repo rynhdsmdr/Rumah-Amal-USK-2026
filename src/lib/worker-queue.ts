@@ -137,7 +137,7 @@ export async function executeQueueProcessing() {
             fieldKey: docField.key,
             fieldLabel: docField.label,
             type: 'missing_document',
-            message: `Berkas "${docField.label}" wajib diunggah tetapi tidak ditemukan.`,
+            message: 'Wajib diunggah tetapi tidak ditemukan.',
             severity: 'warning',
           });
         }
@@ -150,7 +150,7 @@ export async function executeQueueProcessing() {
           fieldKey: docField.key,
           fieldLabel: docField.label,
           type: 'needs_manual_check',
-          message: `Berkas "${docField.label}" membutuhkan verifikasi tanda tangan / stempel basah manual oleh verifikator.`,
+          message: 'Membutuhkan verifikasi tanda tangan / stempel basah manual oleh verifikator.',
           severity: 'info',
         });
       }
@@ -170,7 +170,7 @@ export async function executeQueueProcessing() {
           fieldKey: docField.key,
           fieldLabel: docField.label,
           type: 'ocr_failed',
-          message: `Berkas "${docField.label}" tidak dapat diunduh untuk verifikasi.`,
+          message: 'Tidak dapat diunduh untuk verifikasi.',
           severity: 'warning',
         });
         continue;
@@ -210,7 +210,7 @@ export async function executeQueueProcessing() {
               fieldKey: docField.key,
               fieldLabel: docField.label,
               type: 'keyword_mismatch',
-              message: `Teks pada berkas "${docField.label}" tidak memuat kata kunci yang diharapkan (${docField.expectedKeywords.join(', ')}). Kemungkinan salah unggah file.`,
+              message: `Teks tidak memuat kata kunci yang diharapkan (${docField.expectedKeywords.join(', ')}). Kemungkinan salah unggah file.`,
               severity: 'warning',
             });
           }
@@ -224,7 +224,7 @@ export async function executeQueueProcessing() {
               fieldKey: docField.key,
               fieldLabel: docField.label,
               type: 'expired_document',
-              message: `Masa berlaku berkas "${docField.label}" bermasalah: ${ageCheck.reason}`,
+              message: `Masa berlaku bermasalah: ${ageCheck.reason}`,
               severity: 'warning',
             });
           }
@@ -238,7 +238,7 @@ export async function executeQueueProcessing() {
               fieldKey: docField.key,
               fieldLabel: docField.label,
               type: 'name_mismatch',
-              message: `Kesesuaian nama bermasalah: Nama pendaftar "${applicantName}" tidak terdeteksi pada berkas "${docField.label}". Kemungkinan berkas milik orang lain atau hasil scan buram.`,
+              message: 'Nama tidak terdeteksi pada berkas. Kemungkinan berkas milik orang lain atau hasil scan buram.',
               severity: 'warning',
             });
           }
@@ -249,7 +249,7 @@ export async function executeQueueProcessing() {
           fieldKey: docField.key,
           fieldLabel: docField.label,
           type: 'ocr_failed',
-          message: `Teks pada berkas "${docField.label}" tidak dapat dibaca oleh sistem OCR sehingga kesesuaian nama "${applicantName}" perlu diverifikasi secara manual oleh verifikator.`,
+          message: 'Teks tidak dapat dibaca oleh sistem OCR sehingga kesesuaian nama perlu diverifikasi secara manual oleh verifikator.',
           severity: 'info',
         });
       }

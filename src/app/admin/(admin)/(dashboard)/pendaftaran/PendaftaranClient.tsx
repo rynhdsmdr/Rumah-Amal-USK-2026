@@ -32,10 +32,20 @@ import {
 import ConfirmModal from '@/components/admin/ConfirmModal';
 import AdminToast, { ToastState } from '@/components/admin/AdminToast';
 
+const CATEGORIES = [
+  'PENDIDIKAN',
+  'PEMBERDAYAAN',
+  'SOSIAL',
+  'SYIAR & DAKWAH',
+  'KEMITRAAN',
+  'FASILITATOR & RELAWAN',
+];
+
 interface ProgramItem {
   id: string;
   nama: string;
   slug: string;
+  kategori?: string | null;
   deskripsi: string | null;
   gambarUrl: string | null;
   status: string;
@@ -109,6 +119,7 @@ export default function PendaftaranClient({
   const [editingProgram, setEditingProgram] = useState<ProgramItem | null>(null);
   const [formNama, setFormNama] = useState('');
   const [formSlug, setFormSlug] = useState('');
+  const [formKategori, setFormKategori] = useState('PENDIDIKAN');
   const [formDeskripsi, setFormDeskripsi] = useState('');
   const [formStatus, setFormStatus] = useState('draft');
   const [formTanggalBuka, setFormTanggalBuka] = useState('');
@@ -124,7 +135,8 @@ export default function PendaftaranClient({
   const filteredPrograms = initialPrograms.filter((p) => {
     const matchSearch =
       p.nama.toLowerCase().includes(search.toLowerCase()) ||
-      (p.deskripsi && p.deskripsi.toLowerCase().includes(search.toLowerCase()));
+      (p.deskripsi && p.deskripsi.toLowerCase().includes(search.toLowerCase())) ||
+      (p.kategori && p.kategori.toLowerCase().includes(search.toLowerCase()));
     const matchStatus = statusFilter === 'all' || p.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -138,6 +150,7 @@ export default function PendaftaranClient({
     setEditingProgram(null);
     setFormNama('');
     setFormSlug('');
+    setFormKategori('PENDIDIKAN');
     setFormDeskripsi('');
     setFormStatus('draft');
     setFormTanggalBuka('');
@@ -150,6 +163,7 @@ export default function PendaftaranClient({
     setEditingProgram(program);
     setFormNama(program.nama);
     setFormSlug(program.slug);
+    setFormKategori(program.kategori || 'PENDIDIKAN');
     setFormDeskripsi(program.deskripsi || '');
     setFormStatus(program.status);
     setFormTanggalBuka(
@@ -174,7 +188,7 @@ export default function PendaftaranClient({
       if (editingProgram) {
         const res = await updateProgramBantuan(editingProgram.id, {
           nama: formNama,
-          slug: formSlug,
+          kategori: formKategori,
           deskripsi: formDeskripsi,
           status: formStatus,
           tanggalBuka: formTanggalBuka || null,
@@ -193,6 +207,7 @@ export default function PendaftaranClient({
         const res = await createProgramBantuan({
           nama: formNama,
           slug: formSlug,
+          kategori: formKategori,
           deskripsi: formDeskripsi,
           status: formStatus,
           tanggalBuka: formTanggalBuka || null,
@@ -409,10 +424,10 @@ export default function PendaftaranClient({
                   <div className="relative h-32 bg-gradient-to-br from-[#005621]/10 via-[#005621]/5 to-[#f5b016]/10 shrink-0 border-b border-gray-100 overflow-hidden">
                     <ProgramCardCover gambarUrl={prog.gambarUrl} nama={prog.nama} />
 
-                    {/* Badge Slug / Kategori Top Left */}
+                    {/* Badge Kategori Top Left (Mengikuti kategori program di /admin/program) */}
                     <div className="absolute top-2.5 left-2.5 flex items-center gap-1">
-                      <span className="px-2 py-0.5 bg-white/90 backdrop-blur-xs text-emerald-800 text-[10px] font-extrabold rounded-full border border-emerald-200/80 uppercase shadow-2xs">
-                        {prog.slug}
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-full border border-emerald-200 uppercase shadow-2xs">
+                        {prog.kategori || 'PENDIDIKAN'}
                       </span>
                     </div>
 
@@ -587,32 +602,53 @@ export default function PendaftaranClient({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Slug URL (Opsional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Kosongkan untuk auto-generate dari nama"
-                  value={formSlug}
-                  onChange={(e) => setFormSlug(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
-                />
-              </div>
+              {!editingProgram && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Slug URL (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Kosongkan untuk auto-generate dari nama"
+                    value={formSlug}
+                    onChange={(e) => setFormSlug(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
+                  />
+                </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Status Pendaftaran
-                </label>
-                <select
-                  value={formStatus}
-                  onChange={(e) => setFormStatus(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold focus:outline-none focus:border-[#005621]"
-                >
-                  <option value="draft">Draft (Belum Ditampilkan)</option>
-                  <option value="dibuka">Dibuka</option>
-                  <option value="ditutup">Ditutup</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Kategori Program
+                  </label>
+                  <select
+                    value={formKategori}
+                    onChange={(e) => setFormKategori(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold focus:outline-none focus:border-[#005621] bg-white cursor-pointer"
+                  >
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Status Pendaftaran
+                  </label>
+                  <select
+                    value={formStatus}
+                    onChange={(e) => setFormStatus(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold focus:outline-none focus:border-[#005621] bg-white cursor-pointer"
+                  >
+                    <option value="draft">Draft (Belum Ditampilkan)</option>
+                    <option value="dibuka">Dibuka</option>
+                    <option value="ditutup">Ditutup</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -652,9 +688,6 @@ export default function PendaftaranClient({
                   onChange={(e) => setFormLinkDriveTemplate(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
                 />
-                <p className="text-3xs text-gray-400 mt-1">
-                  Pendaftar dapat mengunduh format surat rekomendasi, format surat pernyataan, dsb.
-                </p>
               </div>
 
               <div>

@@ -19,6 +19,7 @@ interface ProgramItem {
   id: string;
   nama: string;
   slug: string;
+  kategori?: string | null;
   deskripsi: string | null;
   gambarUrl: string | null;
   status: string;
