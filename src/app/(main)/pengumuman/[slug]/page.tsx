@@ -71,7 +71,7 @@ export default function PublicAnnouncementDetailPage({
     }
   }, []);
 
-  const changeLanguage = (newLang: Language) => {
+  const _changeLanguage = (newLang: Language) => {
     setLang(newLang);
     localStorage.setItem('announcement_lang', newLang);
   };

@@ -11,11 +11,12 @@ export default async function ProgramDetailPage(props: {
   const { id } = await props.params;
   const searchParams = await props.searchParams;
   const statusFilter = (searchParams.status as string) || 'all';
+  const batchFilter = (searchParams.batch as string) || 'all';
   const page = parseInt((searchParams.page as string) || '1', 10);
 
   const [progRes, subRes] = await Promise.all([
     getProgramBantuanById(id),
-    getSubmissionsByProgram(id, { status: statusFilter, page, limit: 10 }),
+    getSubmissionsByProgram(id, { status: statusFilter, batch: batchFilter, page, limit: 10 }),
   ]);
 
   if (!progRes.success || !progRes.data) {
@@ -31,6 +32,7 @@ export default async function ProgramDetailPage(props: {
           total: subRes.total || 0,
           page: subRes.page || 1,
           totalPages: subRes.totalPages || 1,
+          availableBatches: subRes.availableBatches || [],
           statusCounts: subRes.statusCounts || {
             all: 0,
             menunggu_diproses: 0,
@@ -42,6 +44,7 @@ export default async function ProgramDetailPage(props: {
           },
         }}
         initialStatus={statusFilter}
+        initialBatch={batchFilter}
       />
     </div>
   );

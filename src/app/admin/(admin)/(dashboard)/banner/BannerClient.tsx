@@ -42,7 +42,7 @@ export default function BannerClient({ initialData }: BannerClientProps) {
 
   const [imagePreview, setImagePreview] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [_uploadingImage, setUploadingImage] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [search, setSearch] = useState("");
 

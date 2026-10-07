@@ -19,7 +19,7 @@ export async function submitInfaq(formData: FormData) {
   const jumlahInfaq = Number(formData.get('jumlah_infaq'));
   const nip = (formData.get('nip') as string | null)?.trim() || null;
   let nama = (formData.get('nama') as string | null)?.trim() || '';
-  let email = (formData.get('email') as string | null)?.trim() || null;
+  const email = (formData.get('email') as string | null)?.trim() || null;
   let alamat = (formData.get('alamat') as string | null)?.trim() || null;
   let noHp = (formData.get('no_hp') as string | null)?.trim() || null;
   const isHambaAllah = formData.get('is_hamba_allah') === '1';

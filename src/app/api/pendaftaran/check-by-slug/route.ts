@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neonPrisma } from '@/lib/neon-prisma';
+import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,12 +34,13 @@ export async function GET(req: NextRequest) {
 
     const targetNeonSlug = SLUG_MAP[slug] || slug;
 
-    const program = await neonPrisma.programBantuan.findUnique({
+    const program = await prisma.programBantuan.findUnique({
       where: { slug: targetNeonSlug },
       select: {
         id: true,
         nama: true,
         slug: true,
+        batchAktif: true,
         status: true,
         tanggalBuka: true,
         tanggalTutup: true,
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
       isOpen: program.status === 'dibuka',
       registrationSlug: program.slug,
       programName: program.nama,
+      batchAktif: program.batchAktif,
       tanggalTutup: program.tanggalTutup,
     });
   } catch (error) {

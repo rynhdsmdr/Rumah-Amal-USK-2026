@@ -16,7 +16,7 @@ interface ConfirmModalProps {
   message: string;
   confirmText?: string;
   cancelText?: string;
-  type?: "danger" | "warning" | "info";
+  type?: "danger" | "warning" | "info" | "primary";
   loading?: boolean;
 }
 
@@ -37,18 +37,21 @@ export default function ConfirmModal({
     danger: "bg-red-100 text-red-600 border-red-200",
     warning: "bg-amber-100 text-amber-600 border-amber-200",
     info: "bg-blue-100 text-blue-600 border-blue-200",
+    primary: "bg-emerald-50 text-[#005621] border-emerald-200",
   };
 
   const btnBgMap = {
     danger: "bg-red-600 hover:bg-red-700 text-white focus:ring-red-500",
     warning: "bg-amber-500 hover:bg-amber-600 text-white focus:ring-amber-400",
     info: "bg-[#005621] hover:bg-[#004219] text-white focus:ring-[#005621]",
+    primary: "bg-[#005621] hover:bg-[#004219] text-white focus:ring-[#005621]",
   };
 
   const iconMap = {
     danger: faTrashCan,
     warning: faTriangleExclamation,
     info: faCircleInfo,
+    primary: faTrashCan,
   };
 
   return (

@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const config = await getNisabConfig();
     return NextResponse.json(config);
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { error: 'Gagal mengambil data nisab' },
       { status: 500 }

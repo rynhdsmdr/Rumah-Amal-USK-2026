@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import Link from 'next/link';
 import { galeriDictionary, GaleriLanguage } from '@/lib/i18n/galeri';
 import ShareAndLikeBar from '@/components/ShareAndLikeBar';
 

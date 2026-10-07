@@ -1,8 +1,10 @@
 'use server';
 
-import { neonPrisma } from '@/lib/neon-prisma';
+import prisma from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { executeQueueProcessing } from '@/lib/worker-queue';
+import { deleteFileFromDrive } from '@/lib/google-drive';
+import { sendSelectionAnnouncementEmail } from '@/lib/email-service';
 
 // Helper slugify
 function generateSlug(text: string): string {
@@ -33,7 +35,7 @@ export async function getProgramBantuanList(search = '', statusFilter = '') {
       where.status = statusFilter;
     }
 
-    const programs = await neonPrisma.programBantuan.findMany({
+    const programs = await prisma.programBantuan.findMany({
       where,
       include: {
         _count: {
@@ -56,7 +58,7 @@ export async function getProgramBantuanList(search = '', statusFilter = '') {
 
 export async function getProgramBantuanById(id: string) {
   try {
-    const program = await neonPrisma.programBantuan.findUnique({
+    const program = await prisma.programBantuan.findUnique({
       where: { id },
       include: {
         documentFields: {
@@ -75,6 +77,29 @@ export async function getProgramBantuanById(id: string) {
       return { success: false, error: 'Program bantuan tidak ditemukan.' };
     }
 
+    // Pastikan field email wajib selalu ada di biodata program
+    const hasEmail = program.biodataFields.some(
+      (f) => f.key.toLowerCase() === 'email' || f.key.toLowerCase().includes('email')
+    );
+    if (!hasEmail) {
+      try {
+        const createdField = await prisma.biodataField.create({
+          data: {
+            programId: program.id,
+            key: 'email',
+            label: 'Alamat Email Aktif',
+            tipe: 'text',
+            options: [],
+            required: true,
+            order: program.biodataFields.length,
+          },
+        });
+        program.biodataFields.push(createdField);
+      } catch {
+        // Ignored if duplicate or concurrency
+      }
+    }
+
     return { success: true, data: program };
   } catch (error: any) {
     console.error('[getProgramBantuanById error]', error);
@@ -86,9 +111,11 @@ export async function createProgramBantuan(formData: {
   nama: string;
   slug?: string;
   kategori?: string;
+  targetKelompok?: string;
   deskripsi?: string;
   gambarUrl?: string;
   status?: string;
+  batchAktif?: string;
   tanggalBuka?: string | null;
   tanggalTutup?: string | null;
   linkDriveTemplate?: string;
@@ -99,22 +126,36 @@ export async function createProgramBantuan(formData: {
     }
 
     let slug = formData.slug?.trim() || generateSlug(formData.nama);
-    const existing = await neonPrisma.programBantuan.findUnique({ where: { slug } });
+    const existing = await prisma.programBantuan.findUnique({ where: { slug } });
     if (existing) {
       slug = `${slug}-${Date.now().toString().slice(-4)}`;
     }
 
-    const newProgram = await neonPrisma.programBantuan.create({
+    const newProgram = await prisma.programBantuan.create({
       data: {
         nama: formData.nama.trim(),
         slug,
         kategori: formData.kategori?.trim() || 'PENDIDIKAN',
+        targetKelompok: formData.targetKelompok?.trim() || 'MAHASISWA_USK',
         deskripsi: formData.deskripsi?.trim() || null,
         gambarUrl: formData.gambarUrl?.trim() || null,
         status: formData.status || 'draft',
+        batchAktif: formData.batchAktif?.trim() || null,
         tanggalBuka: formData.tanggalBuka ? new Date(formData.tanggalBuka) : null,
         tanggalTutup: formData.tanggalTutup ? new Date(formData.tanggalTutup) : null,
         linkDriveTemplate: formData.linkDriveTemplate?.trim() || null,
+        biodataFields: {
+          create: [
+            {
+              key: 'email',
+              label: 'Alamat Email Aktif',
+              tipe: 'text',
+              options: [],
+              required: true,
+              order: 0,
+            },
+          ],
+        },
       },
     });
 
@@ -132,9 +173,11 @@ export async function updateProgramBantuan(
     nama?: string;
     slug?: string;
     kategori?: string;
+    targetKelompok?: string;
     deskripsi?: string;
     gambarUrl?: string;
     status?: string;
+    batchAktif?: string;
     tanggalBuka?: string | null;
     tanggalTutup?: string | null;
     linkDriveTemplate?: string;
@@ -144,9 +187,11 @@ export async function updateProgramBantuan(
     const updateData: any = {};
     if (formData.nama !== undefined) updateData.nama = formData.nama.trim();
     if (formData.kategori !== undefined) updateData.kategori = formData.kategori.trim();
+    if (formData.targetKelompok !== undefined) updateData.targetKelompok = formData.targetKelompok.trim();
     if (formData.deskripsi !== undefined) updateData.deskripsi = formData.deskripsi.trim() || null;
     if (formData.gambarUrl !== undefined) updateData.gambarUrl = formData.gambarUrl.trim() || null;
     if (formData.status !== undefined) updateData.status = formData.status;
+    if (formData.batchAktif !== undefined) updateData.batchAktif = formData.batchAktif.trim() || null;
     if (formData.linkDriveTemplate !== undefined) updateData.linkDriveTemplate = formData.linkDriveTemplate.trim() || null;
     if (formData.tanggalBuka !== undefined) {
       updateData.tanggalBuka = formData.tanggalBuka ? new Date(formData.tanggalBuka) : null;
@@ -157,7 +202,7 @@ export async function updateProgramBantuan(
 
     if (formData.slug?.trim()) {
       const slug = generateSlug(formData.slug);
-      const existing = await neonPrisma.programBantuan.findFirst({
+      const existing = await prisma.programBantuan.findFirst({
         where: { slug, NOT: { id } },
       });
       if (!existing) {
@@ -165,7 +210,7 @@ export async function updateProgramBantuan(
       }
     }
 
-    const updated = await neonPrisma.programBantuan.update({
+    const updated = await prisma.programBantuan.update({
       where: { id },
       data: updateData,
     });
@@ -182,7 +227,7 @@ export async function updateProgramBantuan(
 
 export async function deleteProgramBantuan(id: string) {
   try {
-    await neonPrisma.programBantuan.delete({
+    await prisma.programBantuan.delete({
       where: { id },
     });
 
@@ -197,7 +242,7 @@ export async function deleteProgramBantuan(id: string) {
 
 export async function toggleProgramStatus(id: string, status: 'draft' | 'dibuka' | 'ditutup') {
   try {
-    const updated = await neonPrisma.programBantuan.update({
+    const updated = await prisma.programBantuan.update({
       where: { id },
       data: { status },
     });
@@ -237,7 +282,7 @@ export async function addDocumentField(
     const key = (field.key || generateSlug(field.label)).replace(/-/g, '_');
 
     // Cek duplikasi key dalam program
-    const existing = await neonPrisma.documentField.findUnique({
+    const existing = await prisma.documentField.findUnique({
       where: { programId_key: { programId, key } },
     });
     if (existing) {
@@ -245,9 +290,9 @@ export async function addDocumentField(
     }
 
     // Hitung urutan terakhir
-    const count = await neonPrisma.documentField.count({ where: { programId } });
+    const count = await prisma.documentField.count({ where: { programId } });
 
-    const created = await neonPrisma.documentField.create({
+    const created = await prisma.documentField.create({
       data: {
         programId,
         key,
@@ -284,7 +329,7 @@ export async function updateDocumentField(
   }
 ) {
   try {
-    const existing = await neonPrisma.documentField.findUnique({ where: { id } });
+    const existing = await prisma.documentField.findUnique({ where: { id } });
     if (!existing) {
       return { success: false, error: 'Syarat dokumen tidak ditemukan.' };
     }
@@ -300,7 +345,7 @@ export async function updateDocumentField(
 
     if (field.key && field.key !== existing.key) {
       const key = field.key.replace(/-/g, '_').trim();
-      const duplicate = await neonPrisma.documentField.findUnique({
+      const duplicate = await prisma.documentField.findUnique({
         where: { programId_key: { programId: existing.programId, key } },
       });
       if (duplicate) {
@@ -309,7 +354,7 @@ export async function updateDocumentField(
       updateData.key = key;
     }
 
-    const updated = await neonPrisma.documentField.update({
+    const updated = await prisma.documentField.update({
       where: { id },
       data: updateData,
     });
@@ -324,10 +369,10 @@ export async function updateDocumentField(
 
 export async function deleteDocumentField(id: string) {
   try {
-    const existing = await neonPrisma.documentField.findUnique({ where: { id } });
+    const existing = await prisma.documentField.findUnique({ where: { id } });
     if (!existing) return { success: false, error: 'Field tidak ditemukan.' };
 
-    await neonPrisma.documentField.delete({ where: { id } });
+    await prisma.documentField.delete({ where: { id } });
 
     revalidatePath(`/admin/pendaftaran/${existing.programId}`);
     return { success: true };
@@ -366,16 +411,16 @@ export async function addBiodataField(
       };
     }
 
-    const existing = await neonPrisma.biodataField.findUnique({
+    const existing = await prisma.biodataField.findUnique({
       where: { programId_key: { programId, key } },
     });
     if (existing) {
       return { success: false, error: `Key field "${key}" sudah ada di program ini.` };
     }
 
-    const count = await neonPrisma.biodataField.count({ where: { programId } });
+    const count = await prisma.biodataField.count({ where: { programId } });
 
-    const created = await neonPrisma.biodataField.create({
+    const created = await prisma.biodataField.create({
       data: {
         programId,
         key,
@@ -406,7 +451,7 @@ export async function updateBiodataField(
   }
 ) {
   try {
-    const existing = await neonPrisma.biodataField.findUnique({ where: { id } });
+    const existing = await prisma.biodataField.findUnique({ where: { id } });
     if (!existing) return { success: false, error: 'Field biodata tidak ditemukan.' };
 
     const updateData: any = {};
@@ -417,7 +462,7 @@ export async function updateBiodataField(
 
     if (field.key && field.key !== existing.key) {
       const key = field.key.replace(/-/g, '_').trim();
-      const duplicate = await neonPrisma.biodataField.findUnique({
+      const duplicate = await prisma.biodataField.findUnique({
         where: { programId_key: { programId: existing.programId, key } },
       });
       if (duplicate) {
@@ -426,7 +471,7 @@ export async function updateBiodataField(
       updateData.key = key;
     }
 
-    const updated = await neonPrisma.biodataField.update({
+    const updated = await prisma.biodataField.update({
       where: { id },
       data: updateData,
     });
@@ -441,10 +486,10 @@ export async function updateBiodataField(
 
 export async function deleteBiodataField(id: string) {
   try {
-    const existing = await neonPrisma.biodataField.findUnique({ where: { id } });
+    const existing = await prisma.biodataField.findUnique({ where: { id } });
     if (!existing) return { success: false, error: 'Field tidak ditemukan.' };
 
-    await neonPrisma.biodataField.delete({ where: { id } });
+    await prisma.biodataField.delete({ where: { id } });
 
     revalidatePath(`/admin/pendaftaran/${existing.programId}`);
     return { success: true };
@@ -462,6 +507,7 @@ export async function getSubmissionsByProgram(
   programId: string,
   options: {
     status?: string;
+    batch?: string;
     page?: number;
     limit?: number;
     search?: string;
@@ -478,8 +524,12 @@ export async function getSubmissionsByProgram(
       where.status = options.status;
     }
 
-    const [items, total] = await Promise.all([
-      neonPrisma.submission.findMany({
+    if (options.batch && options.batch !== 'all') {
+      where.batch = options.batch;
+    }
+
+    const [items, total, distinctBatchesRaw] = await Promise.all([
+      prisma.submission.findMany({
         where,
         include: {
           documents: true,
@@ -488,18 +538,30 @@ export async function getSubmissionsByProgram(
         skip,
         take: limit,
       }),
-      neonPrisma.submission.count({ where }),
+      prisma.submission.count({ where }),
+      prisma.submission.findMany({
+        where: { programId, batch: { not: null } },
+        select: { batch: true },
+        distinct: ['batch'],
+      }),
     ]);
 
-    // Status counter untuk tab badge
+    const availableBatches = distinctBatchesRaw.map((b) => b.batch!).filter(Boolean);
+
+    // Status counter untuk tab badge (sesuai batch yang aktif jika difilter)
+    const baseCountWhere: any = { programId };
+    if (options.batch && options.batch !== 'all') {
+      baseCountWhere.batch = options.batch;
+    }
+
     const counts = await Promise.all([
-      neonPrisma.submission.count({ where: { programId } }),
-      neonPrisma.submission.count({ where: { programId, status: 'menunggu_diproses' } }),
-      neonPrisma.submission.count({ where: { programId, status: 'sedang_diproses' } }),
-      neonPrisma.submission.count({ where: { programId, status: 'belum_diseleksi' } }),
-      neonPrisma.submission.count({ where: { programId, status: 'lolos' } }),
-      neonPrisma.submission.count({ where: { programId, status: 'tidak_lolos' } }),
-      neonPrisma.submission.count({ where: { programId, status: 'gagal_diproses' } }),
+      prisma.submission.count({ where: baseCountWhere }),
+      prisma.submission.count({ where: { ...baseCountWhere, status: 'menunggu_diproses' } }),
+      prisma.submission.count({ where: { ...baseCountWhere, status: 'sedang_diproses' } }),
+      prisma.submission.count({ where: { ...baseCountWhere, status: 'belum_diseleksi' } }),
+      prisma.submission.count({ where: { ...baseCountWhere, status: 'lolos' } }),
+      prisma.submission.count({ where: { ...baseCountWhere, status: 'tidak_lolos' } }),
+      prisma.submission.count({ where: { ...baseCountWhere, status: 'gagal_diproses' } }),
     ]);
 
     return {
@@ -508,6 +570,7 @@ export async function getSubmissionsByProgram(
       total,
       page,
       totalPages: Math.ceil(total / limit),
+      availableBatches,
       statusCounts: {
         all: counts[0],
         menunggu_diproses: counts[1],
@@ -524,12 +587,45 @@ export async function getSubmissionsByProgram(
   }
 }
 
-export async function updateSubmissionStatus(submissionId: string, newStatus: string) {
+export async function updateSubmissionStatus(
+  submissionId: string,
+  newStatus: string,
+  catatan?: string
+) {
   try {
-    const updated = await neonPrisma.submission.update({
+    const updated = await prisma.submission.update({
       where: { id: submissionId },
       data: { status: newStatus },
+      include: {
+        program: { select: { nama: true } },
+        userAccount: { select: { email: true, name: true } },
+      },
     });
+
+    // Kirim notifikasi hasil seleksi via Resend jika status lolos / tidak_lolos
+    if (newStatus === 'lolos' || newStatus === 'tidak_lolos') {
+      try {
+        const biodata = (updated.biodataValues as any) || {};
+        const emailKey =
+          Object.keys(biodata).find((k) => k.toLowerCase().includes('email')) || 'email';
+        const toEmail = updated.userAccount?.email || biodata[emailKey] || biodata.email;
+        const nameKey =
+          Object.keys(biodata).find((k) => k.toLowerCase().includes('nama')) || 'nama';
+        const applicantName = updated.userAccount?.name || biodata[nameKey] || 'Pendaftar';
+
+        if (toEmail) {
+          await sendSelectionAnnouncementEmail({
+            toEmail,
+            applicantName,
+            programName: updated.program.nama,
+            isLolos: newStatus === 'lolos',
+            catatan,
+          });
+        }
+      } catch (emailErr) {
+        console.warn('[Gagal kirim email notifikasi kelulusan]', emailErr);
+      }
+    }
 
     revalidatePath(`/admin/pendaftaran/${updated.programId}`);
     return { success: true, data: updated };
@@ -549,10 +645,44 @@ export async function updateMultipleSubmissionsStatus(
       return { success: false, error: 'Tidak ada pendaftar yang dipilih.' };
     }
 
-    const updated = await neonPrisma.submission.updateMany({
+    const updated = await prisma.submission.updateMany({
       where: { id: { in: submissionIds } },
       data: { status: newStatus },
     });
+
+    // Kirim notifikasi batch hasil seleksi via Resend jika status lolos / tidak_lolos
+    if (newStatus === 'lolos' || newStatus === 'tidak_lolos') {
+      const submissions = await prisma.submission.findMany({
+        where: { id: { in: submissionIds } },
+        include: {
+          program: { select: { nama: true } },
+          userAccount: { select: { email: true, name: true } },
+        },
+      });
+
+      for (const sub of submissions) {
+        try {
+          const biodata = (sub.biodataValues as any) || {};
+          const emailKey =
+            Object.keys(biodata).find((k) => k.toLowerCase().includes('email')) || 'email';
+          const toEmail = sub.userAccount?.email || biodata[emailKey] || biodata.email;
+          const nameKey =
+            Object.keys(biodata).find((k) => k.toLowerCase().includes('nama')) || 'nama';
+          const applicantName = sub.userAccount?.name || biodata[nameKey] || 'Pendaftar';
+
+          if (toEmail) {
+            await sendSelectionAnnouncementEmail({
+              toEmail,
+              applicantName,
+              programName: sub.program.nama,
+              isLolos: newStatus === 'lolos',
+            });
+          }
+        } catch (err) {
+          console.warn(`[Gagal kirim email batch untuk submission ${sub.id}]`, err);
+        }
+      }
+    }
 
     if (programId) {
       revalidatePath(`/admin/pendaftaran/${programId}`);
@@ -567,6 +697,7 @@ export async function updateMultipleSubmissionsStatus(
   }
 }
 
+
 // =======================================================================
 // 5. TRIGGER WORKER MANUAL
 // =======================================================================
@@ -579,5 +710,52 @@ export async function triggerWorkerManual() {
   } catch (error: any) {
     console.error('[triggerWorkerManual error]', error);
     return { success: false, error: error.message || 'Gagal memproses antrean worker.' };
+  }
+}
+
+// =======================================================================
+// 6. DELETE SUBMISSION
+// =======================================================================
+
+export async function deleteSubmission(submissionId: string) {
+  try {
+    const sub = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: { documents: true },
+    });
+
+    if (!sub) {
+      return { success: false, error: 'Data pendaftar tidak ditemukan.' };
+    }
+
+    // 1. Hapus berkas-berkas fisik (lokal / Google Drive)
+    for (const doc of sub.documents) {
+      try {
+        await deleteFileFromDrive(doc.fileUrl, doc.driveFileId);
+      } catch (err) {
+        console.warn(`[Gagal hapus berkas pendaftar: ${doc.id}]`, err);
+      }
+    }
+
+    // 2. Hapus file PDF gabungan jika ada
+    if (sub.linkDokumenGabungan) {
+      try {
+        await deleteFileFromDrive(sub.linkDokumenGabungan, null);
+      } catch (err) {
+        console.warn(`[Gagal hapus PDF gabungan pendaftar: ${sub.id}]`, err);
+      }
+    }
+
+    // 3. Hapus data submission dari database (SubmissionDocument cascade otomatis)
+    await prisma.submission.delete({
+      where: { id: submissionId },
+    });
+
+    revalidatePath(`/admin/pendaftaran/${sub.programId}`);
+    revalidatePath('/admin/pendaftaran');
+    return { success: true };
+  } catch (error: any) {
+    console.error('[deleteSubmission error]', error);
+    return { success: false, error: error.message || 'Gagal menghapus data pendaftar.' };
   }
 }

@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
 
     if (contentType.includes('application/json')) {
       const body = await request.json();
-      let { title, titleAr, titleEn, category, excerpt, excerptAr, excerptEn, coverImageUrl, content, contentAr, contentEn, publishedAt, published } = body;
+      const { title, category, excerpt, coverImageUrl, content, publishedAt, published } = body;
+      let { titleAr, titleEn, excerptAr, excerptEn, contentAr, contentEn } = body;
 
       if (!title || !content) {
         return NextResponse.json(

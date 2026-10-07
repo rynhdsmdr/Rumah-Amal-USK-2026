@@ -18,9 +18,11 @@ function getGoogleDriveClient() {
   privateKey = privateKey.replace(/\\n/g, '\n');
 
   try {
-    const auth = new google.auth.JWT({
-      email,
-      key: privateKey,
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: email,
+        private_key: privateKey,
+      },
       scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive'],
     });
 
@@ -32,7 +34,61 @@ function getGoogleDriveClient() {
 }
 
 /**
- * Mencari atau membuat folder di Google Drive
+ * Menyimpan file secara lokal di server sebagai fallback
+ */
+function saveLocalFile({
+  buffer,
+  originalFilename,
+  programName,
+  cleanBatchName,
+  applicantFolderTag,
+}: {
+  buffer: Buffer;
+  originalFilename: string;
+  programName: string;
+  cleanBatchName: string | null;
+  applicantFolderTag: string;
+}): UploadResult {
+  const localDir = cleanBatchName
+    ? path.join(
+        process.cwd(),
+        'public',
+        'uploads',
+        'pendaftaran',
+        programName.replace(/[^a-zA-Z0-9]/g, '_'),
+        cleanBatchName.replace(/[^a-zA-Z0-9]/g, '_'),
+        applicantFolderTag.replace(/[^a-zA-Z0-9]/g, '_')
+      )
+    : path.join(
+        process.cwd(),
+        'public',
+        'uploads',
+        'pendaftaran',
+        programName.replace(/[^a-zA-Z0-9]/g, '_'),
+        applicantFolderTag.replace(/[^a-zA-Z0-9]/g, '_')
+      );
+
+  if (!fs.existsSync(localDir)) {
+    fs.mkdirSync(localDir, { recursive: true });
+  }
+
+  const safeFilename = `${Date.now()}_${originalFilename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+  const filePath = path.join(localDir, safeFilename);
+  fs.writeFileSync(filePath, buffer);
+
+  const relativePath = cleanBatchName
+    ? `/uploads/pendaftaran/${programName.replace(/[^a-zA-Z0-9]/g, '_')}/${cleanBatchName.replace(/[^a-zA-Z0-9]/g, '_')}/${applicantFolderTag.replace(/[^a-zA-Z0-9]/g, '_')}/${safeFilename}`
+    : `/uploads/pendaftaran/${programName.replace(/[^a-zA-Z0-9]/g, '_')}/${applicantFolderTag.replace(/[^a-zA-Z0-9]/g, '_')}/${safeFilename}`;
+
+  return {
+    fileId: `local_${Date.now()}`,
+    fileUrl: relativePath,
+    isMock: true,
+  };
+}
+
+/**
+ * Mencari atau membuat folder di Google Drive (Mendukung Shared Drive / Drive Bersama)
  */
 async function getOrCreateFolder(
   drive: any,
@@ -53,6 +109,8 @@ async function getOrCreateFolder(
     q: queryParts.join(' and '),
     fields: 'files(id, name)',
     spaces: 'drive',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
 
   if (res.data.files && res.data.files.length > 0) {
@@ -72,6 +130,7 @@ async function getOrCreateFolder(
   const created: any = await drive.files.create({
     requestBody: folderMetadata,
     fields: 'id',
+    supportsAllDrives: true,
   });
 
   return created.data.id!;
@@ -84,58 +143,52 @@ export interface UploadResult {
 }
 
 /**
- * Upload buffer file ke Google Drive (atau fallback folder lokal uploads jika SA belum diset)
+ * Upload buffer file ke Google Drive (atau fallback folder lokal uploads jika SA belum diset atau kuota habis)
  */
 export async function uploadFileToDrive({
   buffer,
   originalFilename,
   mimeType,
   programName,
+  batchName,
   applicantFolderTag,
 }: {
   buffer: Buffer;
   originalFilename: string;
   mimeType: string;
   programName: string;
+  batchName?: string;
   applicantFolderTag: string;
 }): Promise<UploadResult> {
   const drive: any = getGoogleDriveClient();
   const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
+  const cleanBatchName = batchName?.trim() ? `Batch ${batchName.trim()}` : null;
+
   // Fallback lokal jika Google Drive credentials belum terkonfigurasi
   if (!drive || !rootFolderId) {
-    const localDir = path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'pendaftaran',
-      programName.replace(/[^a-zA-Z0-9]/g, '_'),
-      applicantFolderTag.replace(/[^a-zA-Z0-9]/g, '_')
-    );
-    if (!fs.existsSync(localDir)) {
-      fs.mkdirSync(localDir, { recursive: true });
-    }
-
-    const safeFilename = `${Date.now()}_${originalFilename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-    const filePath = path.join(localDir, safeFilename);
-    fs.writeFileSync(filePath, buffer);
-
-    const relativePath = `/uploads/pendaftaran/${programName.replace(/[^a-zA-Z0-9]/g, '_')}/${applicantFolderTag.replace(/[^a-zA-Z0-9]/g, '_')}/${safeFilename}`;
-    return {
-      fileId: `local_${Date.now()}`,
-      fileUrl: relativePath,
-      isMock: true,
-    };
+    return saveLocalFile({
+      buffer,
+      originalFilename,
+      programName,
+      cleanBatchName,
+      applicantFolderTag,
+    });
   }
 
   try {
     // 1. Dapatkan atau buat folder program di dalam root folder
     const programFolderId = await getOrCreateFolder(drive, programName, rootFolderId);
 
-    // 2. Dapatkan atau buat folder pendaftar di dalam folder program
-    const applicantFolderId = await getOrCreateFolder(drive, applicantFolderTag, programFolderId);
+    // 2. Dapatkan atau buat folder batch jika ada batch aktif
+    const parentFolderId = cleanBatchName
+      ? await getOrCreateFolder(drive, cleanBatchName, programFolderId)
+      : programFolderId;
 
-    // 3. Upload file ke folder pendaftar
+    // 3. Dapatkan atau buat folder pendaftar di dalam folder parent (batch/program)
+    const applicantFolderId = await getOrCreateFolder(drive, applicantFolderTag, parentFolderId);
+
+    // 4. Upload file ke folder pendaftar
     const stream = new Readable();
     stream.push(buffer);
     stream.push(null);
@@ -154,6 +207,7 @@ export async function uploadFileToDrive({
       requestBody: fileMetadata,
       media: media,
       fields: 'id, webViewLink, webContentLink',
+      supportsAllDrives: true,
     });
 
     const fileId = uploaded.data.id!;
@@ -166,6 +220,32 @@ export async function uploadFileToDrive({
     };
   } catch (error: any) {
     console.error('[uploadFileToDrive error]', error);
+
+    // Fallback otomatis jika folder Google Drive berada di akun pribadi (@gmail.com)
+    // yang tidak memiliki kuota storage untuk Service Account (Google mensyaratkan Shared Drive)
+    if (
+      error?.message?.includes('storage quota') ||
+      error?.message?.includes('storageQuotaExceeded') ||
+      error?.message?.includes('Service Accounts do not have storage quota')
+    ) {
+      console.warn(
+        `[Google Drive Storage Notice] Service Account tidak memiliki kuota di akun Google Drive pribadi (@gmail.com). Berkas dialihkan otomatis ke penyimpanan lokal server (/public/uploads/...) agar pendaftar tidak gagal mengirim formulir. Untuk menyimpan langsung di cloud Google Drive, gunakan Google Shared Drive (Drive Bersama) akun Google Workspace/USK.`
+      );
+
+      return saveLocalFile({
+        buffer,
+        originalFilename,
+        programName,
+        cleanBatchName,
+        applicantFolderTag,
+      });
+    }
+
+    if (error?.message?.includes('invalid_grant') || error?.message?.includes('iat and exp')) {
+      throw new Error(
+        `Waktu/Jam di komputer Anda tidak sinkron dengan server Google (terdeteksi perbedaan waktu). Silakan buka Windows Settings > Date & Time > nyalakan 'Set time automatically' dan klik 'Sync now'. (${error.message})`
+      );
+    }
     throw new Error(`Gagal mengunggah berkas ke Google Drive: ${error.message}`);
   }
 }
@@ -189,7 +269,7 @@ export async function downloadFileBuffer(fileUrl: string, driveFileId?: string |
   }
 
   const res = await drive.files.get(
-    { fileId: driveFileId, alt: 'media' },
+    { fileId: driveFileId, alt: 'media', supportsAllDrives: true },
     { responseType: 'arraybuffer' }
   );
 
@@ -203,11 +283,13 @@ export async function uploadMergedPdfToDrive({
   buffer,
   filename,
   programName,
+  batchName,
   applicantFolderTag,
 }: {
   buffer: Buffer;
   filename: string;
   programName: string;
+  batchName?: string;
   applicantFolderTag: string;
 }): Promise<UploadResult> {
   return uploadFileToDrive({
@@ -215,7 +297,37 @@ export async function uploadMergedPdfToDrive({
     originalFilename: filename,
     mimeType: 'application/pdf',
     programName,
+    batchName,
     applicantFolderTag,
   });
 }
+
+/**
+ * Menghapus file dari Google Drive atau storage lokal (untuk pembersihan saat revisi berkas)
+ */
+export async function deleteFileFromDrive(fileUrl?: string | null, driveFileId?: string | null): Promise<boolean> {
+  try {
+    // Jika file disimpan di lokal
+    if (fileUrl && fileUrl.startsWith('/uploads/')) {
+      const localPath = path.join(process.cwd(), 'public', fileUrl);
+      if (fs.existsSync(localPath)) {
+        fs.unlinkSync(localPath);
+        return true;
+      }
+      return false;
+    }
+
+    const drive: any = getGoogleDriveClient();
+    if (!drive || !driveFileId || driveFileId.startsWith('local_')) {
+      return false;
+    }
+
+    await drive.files.delete({ fileId: driveFileId, supportsAllDrives: true });
+    return true;
+  } catch (err) {
+    console.warn(`[deleteFileFromDrive: file ${driveFileId} tidak dapat dihapus atau sudah terhapus]`, err);
+    return false;
+  }
+}
+
 

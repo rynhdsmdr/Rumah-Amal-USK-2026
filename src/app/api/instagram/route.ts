@@ -84,7 +84,7 @@ export async function GET() {
       throw new Error("Data feed kosong atau format tidak sesuai");
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const normalizedPosts: InstagramPostItem[] = rawItems.slice(0, 6).map((item: any, index: number) => {
       const imageUrl =
         item.sizes?.medium?.mediaUrl ||

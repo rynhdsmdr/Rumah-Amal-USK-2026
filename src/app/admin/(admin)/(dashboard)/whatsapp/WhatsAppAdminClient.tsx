@@ -10,7 +10,6 @@ import {
   faRightFromBracket,
   faInfoCircle,
   faShieldHalved,
-  faRotateRight,
   faQrcode,
   faExclamationTriangle,
 } from '@fortawesome/free-solid-svg-icons';

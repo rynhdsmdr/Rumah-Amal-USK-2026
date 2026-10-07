@@ -369,6 +369,7 @@ export default function BeritaEksternalClient({
               {/* Image Preview */}
               <div className="w-full sm:w-48 h-32 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200 relative">
                 {preview.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={preview.image}
                     alt={preview.title}
@@ -495,6 +496,7 @@ export default function BeritaEksternalClient({
                 {/* Thumbnail */}
                 <div className="relative w-24 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-100">
                   {item.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={item.image}
                       alt={item.title}

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import Link from 'next/link';
 import { dokumenDictionary, DokumenLanguage } from '@/lib/i18n/dokumen';
 
 interface DocumentItem {
@@ -98,7 +97,7 @@ export default function DokumenPage() {
     });
   };
 
-  const changeLanguage = (newLang: DokumenLanguage) => {
+  const _changeLanguage = (newLang: DokumenLanguage) => {
     setLang(newLang);
     localStorage.setItem('dokumen_lang', newLang);
     localStorage.setItem('app_lang', newLang);

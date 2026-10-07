@@ -19,8 +19,9 @@ export default function GalleryImageCard({ id, imageUrl }: { id: string; imageUr
 
     return (
         <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            { }
             <div className="relative rounded-lg overflow-hidden border border-gray-200 group">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={imageUrl} alt="Galeri" className="w-full h-32 object-cover" />
                 <button
                     onClick={() => setIsConfirmOpen(true)}

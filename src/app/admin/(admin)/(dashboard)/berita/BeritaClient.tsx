@@ -61,9 +61,9 @@ function stripHtml(html: string) {
 }
 
 function PreviewPanel({
-  title, excerpt, category, coverImageUrl, content, publishedAt,
+  title, excerpt, category: _category, coverImageUrl, content, publishedAt,
 }: {
-  title: string; excerpt: string; category: string;
+  title: string; excerpt: string; category?: string;
   coverImageUrl: string; content: string; publishedAt: string;
 }) {
   return (

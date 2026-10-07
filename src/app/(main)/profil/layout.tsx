@@ -48,8 +48,6 @@ export default function ProfilLayout({
     return pathname.startsWith(href);
   };
 
-  const activeItemIndex = dict.menuItems.findIndex((item) => isLinkActive(item.href));
-  const activeLabel = activeItemIndex !== -1 ? dict.menuItems[activeItemIndex].label : dict.menuItems[0].label;
 
   return (
     <ProfilContext.Provider value={{ lang, setLang: changeLanguage, dict }}>

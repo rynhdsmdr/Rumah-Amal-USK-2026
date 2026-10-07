@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     method: 'DELETE',
     headers: req.headers,
     body: req.body,
-    // @ts-ignore
+    // @ts-expect-error duplex not yet in TypeScript RequestInit types
     duplex: 'half',
   });
   return DELETE(new NextRequest(deleteReq));

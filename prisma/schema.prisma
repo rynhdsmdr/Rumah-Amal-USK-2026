@@ -355,4 +355,193 @@ model NewsLink {
   @@map("news_links")
 }
 
+model PintasDana {
+  id              String   @id @default("default")
+  kuotaTersedia   Float    @default(0) @map("kuota_tersedia")
+  infaqMasuk      Float    @default(0) @map("infaq_masuk")
+  tersalurkan     Float    @default(0) @map("tersalurkan")
+  dicadangkan     Float    @default(0) @map("dicadangkan")
+  definisi        String?  @db.Text
+  syaratAdmin     String?  @map("syarat_admin") @db.Text
+  alurPendaftaran String?  @map("alur_pendaftaran") @db.Text
+  linkDownload    String?  @map("link_download")
+  linkInformasi   String?  @map("link_informasi")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("pintas_dana")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("push_subscriptions")
+}
+
+// =======================================================================
+// MODEL PENDAFTARAN PROGRAM BANTUAN (Dimigrasikan dari Neon ke Supabase)
+// =======================================================================
+
+model ProgramBantuan {
+  id                String          @id @default(cuid())
+  nama              String
+  slug              String          @unique
+  kategori          String          @default("PENDIDIKAN")
+  targetKelompok    String          @default("MAHASISWA_USK") @map("target_kelompok") // MAHASISWA_USK | DOSEN_STAFF_USK | MASYARAKAT_UMUM | SEMUA
+  deskripsi         String?         @db.Text
+  gambarUrl         String?         @map("gambar_url")
+  status            String          @default("draft") // draft | dibuka | ditutup
+  batchAktif        String?         @map("batch_aktif") // e.g. "2026 Ganjil", "2026 Genap"
+  tanggalBuka       DateTime?       @map("tanggal_buka")
+  tanggalTutup      DateTime?       @map("tanggal_tutup")
+  linkDriveTemplate String?         @map("link_drive_template")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  documentFields    DocumentField[]
+  biodataFields     BiodataField[]
+  submissions       Submission[]
+
+  @@map("programs_bantuan")
+}
+
+model DocumentField {
+  id                     String         @id @default(cuid())
+  programId              String         @map("program_id")
+  program                ProgramBantuan @relation(fields: [programId], references: [id], onDelete: Cascade)
+  key                    String         // e.g. 'ktp', 'surat_rekomendasi_rektor'
+  label                  String         // e.g. 'KTP', 'Surat Rekomendasi Rektor'
+  required               Boolean        @default(true)
+  maxAgeMonths           Int?           @map("max_age_months")
+  expectedKeywords       String[]       @default([]) @map("expected_keywords")
+  nameCheckApplicable    Boolean        @default(false) @map("name_check_applicable")
+  isSingleCombinedUpload Boolean        @default(false) @map("is_single_combined_upload")
+  needsStampCheck        Boolean        @default(false) @map("needs_stamp_check")
+  order                  Int            @default(0)
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+
+  documents              SubmissionDocument[]
+
+  @@unique([programId, key])
+  @@map("document_fields")
+}
+
+model BiodataField {
+  id        String         @id @default(cuid())
+  programId String         @map("program_id")
+  program   ProgramBantuan @relation(fields: [programId], references: [id], onDelete: Cascade)
+  key       String         // e.g. 'npm', 'nama_ayah', 'penghasilan_bulan'
+  label     String         // e.g. 'NPM', 'Nama Ayah', 'Penghasilan Bulanan'
+  tipe      String         // text | number | select | date | textarea | radio
+  options   String[]       @default([]) // Untuk tipe select / radio
+  required  Boolean        @default(true)
+  order     Int            @default(0)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@unique([programId, key])
+  @@map("biodata_fields")
+}
+
+model UserAccount {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  image        String?
+  passwordHash String?       @map("password_hash")
+  provider     String        @default("google") // google | manual
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  profile      UserProfile?
+  submissions  Submission[]
+
+  @@map("user_accounts")
+}
+
+model UserProfile {
+  id              String      @id @default(cuid())
+  userAccountId   String      @unique @map("user_account_id")
+  userAccount     UserAccount @relation(fields: [userAccountId], references: [id], onDelete: Cascade)
+  kelompok        String      @map("kelompok") // MAHASISWA_USK | DOSEN_STAFF_USK | MASYARAKAT_UMUM
+  namaLengkap     String      @map("nama_lengkap")
+  nik             String      @map("nik")
+  noWa            String      @map("no_wa")
+  
+  // Khusus Mahasiswa USK
+  npm             String?     @map("npm")
+  fakultas        String?     @map("fakultas")
+  prodi           String?     @map("prodi")
+  
+  // Khusus Dosen / Staff USK
+  nip             String?     @map("nip")
+  unitKerja       String?     @map("unit_kerja")
+  
+  // Khusus Masyarakat Umum
+  alamat          String?     @map("alamat")
+  pekerjaan       String?     @map("pekerjaan")
+  
+  // Berkas Dokumen Permanen (Single Identity)
+  ktpUrl          String?     @map("ktp_url")
+  ktmUrl          String?     @map("ktm_url")
+  kartuPegawaiUrl String?     @map("kartu_pegawai_url")
+  kkUrl           String?     @map("kk_url")
+  
+  isCompleted     Boolean     @default(false) @map("is_completed")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@map("user_profiles")
+}
+
+model Submission {
+  id                  String         @id @default(cuid())
+  programId           String         @map("program_id")
+  program             ProgramBantuan @relation(fields: [programId], references: [id], onDelete: Cascade)
+  userAccountId       String?        @map("user_account_id")
+  userAccount         UserAccount?   @relation(fields: [userAccountId], references: [id], onDelete: SetNull)
+  batch               String?        @map("batch") // e.g. "2026 Ganjil", "2026 Genap"
+  token               String         @unique @default(uuid())
+  biodataValues       Json           @default("{}") @map("biodata_values")
+  status              String         @default("menunggu_diproses") // menunggu_diproses | sedang_diproses | belum_diseleksi | lolos | tidak_lolos | gagal_diproses
+  warnings            Json           @default("[]") // Ringkasan warning validasi OCR/aturan
+  linkDokumenGabungan String?        @map("link_dokumen_gabungan") // URL file PDF final di Google Drive
+  processingStartedAt DateTime?      @map("processing_started_at") // Untuk penanda lock & timeout worker (> 15 menit)
+  submittedAt         DateTime       @default(now()) @map("submitted_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  documents           SubmissionDocument[]
+
+  @@index([status, submittedAt])
+  @@index([programId, batch])
+  @@index([token])
+  @@map("submissions")
+}
+
+model SubmissionDocument {
+  id               String         @id @default(cuid())
+  submissionId     String         @map("submission_id")
+  submission       Submission     @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  documentFieldId  String?        @map("document_field_id")
+  documentField    DocumentField? @relation(fields: [documentFieldId], references: [id], onDelete: SetNull)
+  fieldKey         String         @map("field_key")
+  originalFilename String         @map("original_filename")
+  fileUrl          String         @map("file_url")
+  driveFileId      String?        @map("drive_file_id")
+  fileSizeBytes    Int?           @map("file_size_bytes")
+  mimeType         String?        @map("mime_type")
+  ocrText          String?        @db.Text @map("ocr_text")
+  needsRevision    Boolean        @default(false) @map("needs_revision")
+  revisionNote     String?        @map("revision_note")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@map("submission_documents")
+}
+
+
 

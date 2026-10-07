@@ -1,4 +1,4 @@
-import { neonPrisma } from '@/lib/neon-prisma';
+import prisma from '@/lib/prisma';
 import { cache } from 'react';
 
 /**
@@ -7,7 +7,7 @@ import { cache } from 'react';
  */
 export async function getActivePrograms() {
   try {
-    const programs = await neonPrisma.programBantuan.findMany({
+    const programs = await prisma.programBantuan.findMany({
       where: {
         status: 'dibuka',
       },
@@ -39,7 +39,7 @@ export async function getActivePrograms() {
  */
 export const getPublicProgramBySlug = cache(async (slug: string) => {
   try {
-    const program = await neonPrisma.programBantuan.findUnique({
+    const program = await prisma.programBantuan.findUnique({
       where: { slug },
       include: {
         documentFields: {
@@ -53,6 +53,40 @@ export const getPublicProgramBySlug = cache(async (slug: string) => {
 
     if (!program) {
       return { success: false, error: 'Program bantuan tidak ditemukan.' };
+    }
+
+    // Pastikan field email wajib selalu ada di biodata program
+    const hasEmail = program.biodataFields.some(
+      (f) => f.key.toLowerCase() === 'email' || f.key.toLowerCase().includes('email')
+    );
+    if (!hasEmail) {
+      try {
+        const createdField = await prisma.biodataField.create({
+          data: {
+            programId: program.id,
+            key: 'email',
+            label: 'Alamat Email Aktif',
+            tipe: 'text',
+            options: [],
+            required: true,
+            order: program.biodataFields.length,
+          },
+        });
+        program.biodataFields.push(createdField);
+      } catch {
+        program.biodataFields.push({
+          id: `auto_email_${program.id}`,
+          programId: program.id,
+          key: 'email',
+          label: 'Alamat Email Aktif',
+          tipe: 'text',
+          options: [],
+          required: true,
+          order: 999,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any);
+      }
     }
 
     return { success: true, data: program };

@@ -82,6 +82,7 @@ export default function AdminRekapZakatPage() {
 
   useEffect(() => {
     loadData(1, '', 'all');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleSearchChange(val: string) {

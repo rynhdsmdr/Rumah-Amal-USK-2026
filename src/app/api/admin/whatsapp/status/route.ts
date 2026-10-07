@@ -17,7 +17,7 @@ export async function GET() {
       status: 'offline',
       error: 'WhatsApp Gateway service tidak merespon.',
     });
-  } catch (err: any) {
+  } catch (_err: any) {
     return NextResponse.json({
       status: 'offline',
       error: 'Gagal terhubung ke WhatsApp Gateway service di port 3001. Pastikan service sudah dijalankan.',

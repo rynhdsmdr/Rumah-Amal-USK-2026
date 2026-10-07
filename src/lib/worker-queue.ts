@@ -1,4 +1,4 @@
-import { neonPrisma } from '@/lib/neon-prisma';
+import prisma from '@/lib/prisma';
 import { downloadFileBuffer, uploadMergedPdfToDrive } from '@/lib/google-drive';
 import {
   checkExpectedKeywords,
@@ -66,7 +66,7 @@ export function extractApplicantName(biodata: Record<string, any>): string {
 export async function executeQueueProcessing() {
   // 1. Pemulihan Antrean Macet (Stuck Submissions > 15 menit)
   const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
-  const stuckSubmissions = await neonPrisma.submission.updateMany({
+  const stuckSubmissions = await prisma.submission.updateMany({
     where: {
       status: 'sedang_diproses',
       processingStartedAt: { lt: fifteenMinutesAgo },
@@ -77,7 +77,7 @@ export async function executeQueueProcessing() {
   });
 
   // 2. Ambil Batch Submission Berstatus 'menunggu_diproses' atau 'gagal_diproses' (maks 3-5 agar aman dari execution timeout)
-  const pendingSubmissions = await neonPrisma.submission.findMany({
+  const pendingSubmissions = await prisma.submission.findMany({
     where: {
       status: { in: ['menunggu_diproses', 'gagal_diproses'] },
     },
@@ -108,7 +108,7 @@ export async function executeQueueProcessing() {
   // 3. Proses Tiap Submission Secara Sekuensial
   for (const submission of pendingSubmissions) {
     // Pasang Row-level Lock Sederhana
-    await neonPrisma.submission.update({
+    await prisma.submission.update({
       where: { id: submission.id },
       data: {
         status: 'sedang_diproses',
@@ -186,7 +186,7 @@ export async function executeQueueProcessing() {
       if (!ocrText && uploadedDoc.mimeType?.startsWith('image/')) {
         ocrText = await runOcrOnBuffer(fileBuffer, uploadedDoc.mimeType);
         // Simpan teks OCR ke database agar tidak perlu OCR ulang
-        await neonPrisma.submissionDocument.update({
+        await prisma.submissionDocument.update({
           where: { id: uploadedDoc.id },
           data: { ocrText },
         });
@@ -267,6 +267,7 @@ export async function executeQueueProcessing() {
           buffer: mergedBuffer,
           filename,
           programName: submission.program.nama,
+          batchName: submission.batch || (submission.program as any).batchAktif || undefined,
           applicantFolderTag: folderTag,
         });
 
@@ -277,7 +278,7 @@ export async function executeQueueProcessing() {
     }
 
     // 3d. Finalisasi Status Submission Menjadi 'belum_diseleksi'
-    const updatedSubmission = await neonPrisma.submission.update({
+    const updatedSubmission = await prisma.submission.update({
       where: { id: submission.id },
       data: {
         status: 'belum_diseleksi',

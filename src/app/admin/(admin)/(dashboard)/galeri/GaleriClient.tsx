@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUpload, faSpinner, faSave, faSync } from "@fortawesome/free-solid-svg-icons";
-import { addGalleryImage, updateGalleryImage, deleteGalleryImage, uploadGalleryImages } from "@/actions/gallery";
+import { addGalleryImage, updateGalleryImage, deleteGalleryImage } from "@/actions/gallery";
 import ConfirmModal from "@/components/admin/ConfirmModal";
 import AdminToast, { ToastState } from "@/components/admin/AdminToast";
 
@@ -53,7 +53,7 @@ export default function GaleriClient({
 
   const [uploading, setUploading] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState("");
-  const [titleInput, setTitleInput] = useState("");
+  const [_titleInput, setTitleInput] = useState("");
   const [uploadedPreview, setUploadedPreview] = useState("");
 
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<GalleryRow | null>(null);

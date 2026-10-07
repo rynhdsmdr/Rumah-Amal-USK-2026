@@ -470,7 +470,7 @@ export default function ProgramClient({
           ) : (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {filtered.map((item) => (
-                <div key={item.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+                <div key={item.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col h-full">
                   {/* Cover Image */}
                   <div className="relative h-36 bg-gradient-to-br from-[#005621]/10 to-[#005621]/20 shrink-0">
                     {item.coverImageUrl ? (
@@ -499,13 +499,13 @@ export default function ProgramClient({
 
                   {/* Content */}
                   <div className="p-4 flex flex-col flex-1 gap-2">
-                    <p className="font-bold text-gray-800 text-sm leading-snug line-clamp-2">{item.title}</p>
-                    <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
+                    <p className="font-bold text-gray-800 text-sm leading-snug line-clamp-2 min-h-[2.5rem]">{item.title}</p>
+                    <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed min-h-[2rem]">
                       {item.excerpt || stripHtml(item.content)}
                     </p>
 
                     {/* Multilingual Badges Indicator */}
-                    <div className="flex items-center gap-1 mt-1">
+                    <div className="flex items-center gap-1 mt-1 min-h-[20px]">
                       <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800">🇮🇩 ID</span>
                       {item.titleEn && <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-blue-100 text-blue-800">🇬🇧 EN</span>}
                       {item.titleAr && <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800">🇸🇦 AR</span>}

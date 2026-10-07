@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { getActivePrograms } from '@/actions/pendaftaran-publik';
+import { getUserSession } from '@/lib/user-auth';
 import PendaftaranKatalogClient from './PendaftaranKatalogClient';
 
 export const metadata: Metadata = {
@@ -7,12 +9,31 @@ export const metadata: Metadata = {
   description: 'Daftar program bantuan dan beasiswa terbuka di Rumah Amal Masjid Jamik Universitas Syiah Kuala.',
 };
 
-// Cache katalog publik selama 60 detik (ISR) agar respon instan, dan otomatis invalidasi saat admin mengubah program
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export default async function PendaftaranPage() {
-  const result = await getActivePrograms();
-  const programs = result.success && result.data ? result.data : [];
+  const [result, userSession] = await Promise.all([
+    getActivePrograms(),
+    getUserSession(),
+  ]);
 
-  return <PendaftaranKatalogClient initialPrograms={programs} />;
+  // Wajib memiliki akun terlebih dahulu
+  if (!userSession) {
+    redirect('/masuk?redirect=/pendaftaran');
+  }
+
+  // Wajib melengkapi single identity terlebih dahulu
+  if (!userSession.isProfileCompleted) {
+    redirect('/akun/onboarding');
+  }
+
+  const programs = result.success && result.data ? (result.data as any) : [];
+
+  return (
+    <PendaftaranKatalogClient
+      initialPrograms={programs}
+      userSession={userSession}
+    />
+  );
 }
+

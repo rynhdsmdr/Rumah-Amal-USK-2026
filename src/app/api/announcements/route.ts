@@ -95,7 +95,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    let { title, titleAr, titleEn, slug, excerpt, category, coverImageUrl, content, contentAr, contentEn, tags } = body;
+    const { title, slug, excerpt, category, coverImageUrl, content, tags } = body;
+    let { titleAr, titleEn, contentAr, contentEn } = body;
 
     if (!title || !content) {
       return NextResponse.json(

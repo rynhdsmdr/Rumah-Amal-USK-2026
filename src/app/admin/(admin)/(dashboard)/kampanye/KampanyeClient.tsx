@@ -56,7 +56,7 @@ function formatRupiah(amount: number | null) {
   }).format(amount);
 }
 
-function formatTanggal(date: Date | null) {
+function _formatTanggal(date: Date | null) {
   if (!date) return "-";
   return new Date(date).toLocaleDateString("id-ID", {
     day: "numeric", month: "long", year: "numeric",
@@ -64,10 +64,10 @@ function formatTanggal(date: Date | null) {
 }
 
 function PreviewPanel({
-  judul, deskripsi, imageUrl, targetDana, terkumpul, tanggalSelesai,
+  judul, deskripsi, imageUrl, targetDana, terkumpul, tanggalSelesai: _tanggalSelesai,
 }: {
   judul: string; deskripsi: string; imageUrl: string;
-  targetDana: number; terkumpul: number; tanggalSelesai: string;
+  targetDana: number; terkumpul: number; tanggalSelesai?: string;
 }) {
   const rawPct = targetDana > 0 ? (terkumpul / targetDana) * 100 : 0;
   const pctText = rawPct > 0 && rawPct < 1 ? rawPct.toFixed(1) : Math.round(rawPct);

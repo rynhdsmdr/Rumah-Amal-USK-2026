@@ -26,6 +26,7 @@ interface RegistrationInfo {
   isOpen: boolean;
   registrationSlug: string;
   programName: string;
+  batchAktif?: string | null;
   tanggalTutup?: string | null;
 }
 
@@ -49,6 +50,14 @@ export default function PublicProgramDetailPage({
   const [autoArContent, setAutoArContent] = useState('');
   const [autoEnTitle, setAutoEnTitle] = useState('');
   const [autoEnContent, setAutoEnContent] = useState('');
+  const [userLoggedIn, setUserLoggedIn] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => setUserLoggedIn(!!data.loggedIn))
+      .catch(() => setUserLoggedIn(false));
+  }, []);
 
   useEffect(() => {
     const readLang = () => {
@@ -62,7 +71,7 @@ export default function PublicProgramDetailPage({
     return () => window.removeEventListener('languageChange', readLang);
   }, []);
 
-  const changeLanguage = (newLang: Language) => {
+  const _changeLanguage = (newLang: Language) => {
     setLang(newLang);
     localStorage.setItem('program_lang', newLang);
   };
@@ -323,9 +332,16 @@ export default function PublicProgramDetailPage({
                 <div className="space-y-2 flex-1">
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-white/15 backdrop-blur-xs text-[#ffc800] border border-white/10">
                     <span className={`w-2 h-2 rounded-full ${registrationInfo.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
-                    {registrationInfo.isOpen
-                      ? (lang === 'ar' ? 'التسجيل مفتوح' : lang === 'en' ? 'Registration Open' : 'Pendaftaran Dibuka')
-                      : (lang === 'ar' ? 'التسجيل مغلق' : lang === 'en' ? 'Registration Closed' : 'Pendaftaran Ditutup')}
+                    <span>
+                      {registrationInfo.isOpen
+                        ? (lang === 'ar' ? 'التسجيل مفتوح' : lang === 'en' ? 'Registration Open' : 'Pendaftaran Dibuka')
+                        : (lang === 'ar' ? 'التسجيل مغلق' : lang === 'en' ? 'Registration Closed' : 'Pendaftaran Ditutup')}
+                    </span>
+                    {registrationInfo.isOpen && registrationInfo.batchAktif && (
+                      <span className="text-white/80 font-normal border-l border-white/20 pl-2">
+                        {registrationInfo.batchAktif}
+                      </span>
+                    )}
                   </div>
                   <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
                     {lang === 'ar'
@@ -363,17 +379,32 @@ export default function PublicProgramDetailPage({
                 </div>
 
                 {registrationInfo.isOpen ? (
-                  <Link
-                    href={`/pendaftaran/${registrationInfo.registrationSlug}`}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#f5b016] hover:bg-[#ffc800] text-[#063A1E] font-extrabold text-sm sm:text-base shadow-lg hover:shadow-xl hover:scale-[1.03] active:scale-[0.98] transition-all duration-200 whitespace-nowrap cursor-pointer self-stretch md:self-auto"
-                  >
-                    <span>
-                      {lang === 'ar' ? 'سجل الآن' : lang === 'en' ? 'Apply Now' : 'Daftar Program Sekarang'}
-                    </span>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                  </Link>
+                  userLoggedIn ? (
+                    <Link
+                      href={`/pendaftaran/${registrationInfo.registrationSlug}`}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#f5b016] hover:bg-[#ffc800] text-[#063A1E] font-extrabold text-sm sm:text-base shadow-lg hover:shadow-xl hover:scale-[1.03] active:scale-[0.98] transition-all duration-200 whitespace-nowrap cursor-pointer self-stretch md:self-auto"
+                    >
+                      <span>
+                        {lang === 'ar' ? 'متابعة التسجيل في حسابي' : lang === 'en' ? 'Register via My Account' : 'Daftar Melalui Akun Saya'}
+                      </span>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/masuk?redirect=/pendaftaran/${registrationInfo.registrationSlug}`}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#005621] hover:bg-[#004218] text-white font-extrabold text-sm sm:text-base shadow-lg hover:shadow-xl hover:scale-[1.03] active:scale-[0.98] transition-all duration-200 whitespace-nowrap cursor-pointer self-stretch md:self-auto"
+                      title="Masuk akun pendaftar untuk mengisi formulir"
+                    >
+                      <span>
+                        {lang === 'ar' ? 'سجل الدخول للتقديم' : lang === 'en' ? 'Sign In to Apply' : 'Masuk Akun untuk Mendaftar'}
+                      </span>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                    </Link>
+                  )
                 ) : (
                   <span className="px-5 py-3 rounded-xl bg-white/10 text-white/60 font-semibold text-sm cursor-not-allowed">
                     {lang === 'ar' ? 'التسجيل مغلق' : lang === 'en' ? 'Closed' : 'Pendaftaran Ditutup'}

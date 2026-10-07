@@ -38,8 +38,10 @@ const NAV_LABELS: Record<Language, Record<string, string>> = {
     Galeri: "Galeri",
     BayarZakat: "Kalkulator Zakat",
     CekRiwayat: "Cek Riwayat Zakat & Infaq",
-    Pendaftaran: "Pendaftaran Beasiswa & Bantuan",
+    Pendaftaran: "Pendaftaran",
     Bahasa: "Bahasa",
+    Masuk: "Masuk",
+    Akun: "Akun Saya",
   },
   en: {
     Beranda: "Home",
@@ -53,8 +55,10 @@ const NAV_LABELS: Record<Language, Record<string, string>> = {
     Galeri: "Gallery",
     BayarZakat: "Zakat Calculator",
     CekRiwayat: "Check Zakat & Infaq History",
-    Pendaftaran: "Scholarship & Aid Application",
+    Pendaftaran: "Registration",
     Bahasa: "Language",
+    Masuk: "Sign In",
+    Akun: "My Account",
   },
   ar: {
     Beranda: "الرئيسية",
@@ -68,8 +72,10 @@ const NAV_LABELS: Record<Language, Record<string, string>> = {
     Galeri: "المعرض",
     BayarZakat: "حاسبة الزكاة",
     CekRiwayat: "التحقق من سجل الزكاة والإنفاق",
-    Pendaftaran: "التسجيل في المنح والمساعدات",
+    Pendaftaran: "التسجيل",
     Bahasa: "اللغة",
+    Masuk: "تسجيل الدخول",
+    Akun: "حسابي",
   },
 };
 
@@ -82,9 +88,29 @@ export default function Navbar() {
   const [mobileLangOpen, setMobileLangOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState<Language>("id");
   const [isScrolled, setIsScrolled] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    email: string;
+    name: string | null;
+    image: string | null;
+    kelompok: string | null;
+  } | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const langDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.loggedIn && data.user) {
+          setCurrentUser(data.user);
+        } else {
+          setCurrentUser(null);
+        }
+      })
+      .catch(() => setCurrentUser(null));
+  }, [pathname]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -184,6 +210,10 @@ export default function Navbar() {
               const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
 
               if (link.hasDropdown) {
+                const isDropdownActive =
+                  pathname.startsWith("/program") ||
+                  pathname.startsWith("/kampanye");
+
                 return (
                   <div
                     key={link.label}
@@ -198,23 +228,34 @@ export default function Navbar() {
                         e.stopPropagation();
                         setProgramDropdownOpen((prev) => !prev);
                       }}
-                      className="group relative flex items-center gap-0.5 px-1 xl:px-1.5 py-1 text-gray-600 hover:text-[#0b6330] transition-colors duration-200 cursor-pointer"
+                      className={`group relative flex items-center gap-0.5 px-1 xl:px-1.5 py-1 transition-colors duration-200 cursor-pointer ${
+                        isDropdownActive ? "text-[#0b6330] font-bold" : "text-gray-600 hover:text-[#0b6330]"
+                      }`}
                     >
                       <span>{link.label}</span>
                       <svg
-                        className={`w-3 h-3 transition-transform duration-200 ${programDropdownOpen ? "rotate-180 text-[#0b6330]" : "text-gray-400"
-                          }`}
+                        className={`w-3 h-3 transition-transform duration-200 ${
+                          programDropdownOpen
+                            ? "rotate-180 text-[#0b6330]"
+                            : isDropdownActive
+                            ? "text-[#0b6330]"
+                            : "text-gray-400"
+                        }`}
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
-                      <span className="absolute bottom-0 left-0 h-[2.5px] bg-[#0b6330] w-0 group-hover:w-full transition-all duration-300 ease-out" />
+                      <span
+                        className={`absolute bottom-0 left-0 h-[2.5px] bg-[#0b6330] transition-all duration-300 ease-out ${
+                          isDropdownActive ? "w-full" : "w-0 group-hover:w-full"
+                        }`}
+                      />
                     </button>
 
                     <div
-                      className={`absolute top-full left-0 w-44 pt-1.5 z-50 transition-all duration-200 ease-out transform before:content-[''] before:absolute before:-top-4 before:inset-x-0 before:h-4 ${programDropdownOpen
+                      className={`absolute top-full left-0 w-48 pt-1.5 z-50 transition-all duration-200 ease-out transform before:content-[''] before:absolute before:-top-4 before:inset-x-0 before:h-4 ${programDropdownOpen
                         ? "opacity-100 translate-y-0 scale-100 pointer-events-auto"
                         : "opacity-0 translate-y-2 scale-95 pointer-events-none"
                         }`}
@@ -223,14 +264,22 @@ export default function Navbar() {
                         <Link
                           href="/program"
                           onClick={() => setProgramDropdownOpen(false)}
-                          className="block px-4 py-2 text-[13px] text-gray-700 font-semibold hover:bg-gray-50 hover:text-[#0b6330] transition-colors"
+                          className={`block px-4 py-2 text-[13px] font-semibold transition-colors ${
+                            pathname.startsWith("/program")
+                              ? "bg-green-50 text-[#0b6330] font-bold"
+                              : "text-gray-700 hover:bg-gray-50 hover:text-[#0b6330]"
+                          }`}
                         >
                           {t.Program}
                         </Link>
                         <Link
                           href="/kampanye"
                           onClick={() => setProgramDropdownOpen(false)}
-                          className="block px-4 py-2 text-[13px] text-gray-700 font-semibold hover:bg-gray-50 hover:text-[#0b6330] transition-colors"
+                          className={`block px-4 py-2 text-[13px] font-semibold transition-colors ${
+                            pathname.startsWith("/kampanye")
+                              ? "bg-green-50 text-[#0b6330] font-bold"
+                              : "text-gray-700 hover:bg-gray-50 hover:text-[#0b6330]"
+                          }`}
                         >
                           {t.Kampanye}
                         </Link>
@@ -318,6 +367,25 @@ export default function Navbar() {
             >
               {t.BayarZakat}
             </Link>
+
+            {/* Tombol Akun / Masuk Pendaftar */}
+            {currentUser ? (
+              <Link
+                href="/akun"
+                className="hidden lg:inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#005621] border border-emerald-300 font-bold text-[10px] xl:text-[12px] px-2.5 xl:px-3 py-1.5 rounded-lg transition-all duration-200 shadow-2xs whitespace-nowrap shrink-0"
+                title={`Masuk sebagai: ${currentUser.name || currentUser.email}`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{currentUser.name ? currentUser.name.split(' ')[0] : t.Akun}</span>
+              </Link>
+            ) : (
+              <Link
+                href="/masuk"
+                className="hidden lg:inline-flex items-center justify-center bg-[#005621] hover:bg-[#004218] text-white font-bold text-[10px] xl:text-[12px] px-2.5 xl:px-3.5 py-1.5 rounded-lg transition-all duration-200 shadow-2xs whitespace-nowrap shrink-0"
+              >
+                {t.Masuk}
+              </Link>
+            )}
 
             {/* Mobile Menu Button */}
             <button
@@ -428,14 +496,18 @@ export default function Navbar() {
                     <Link
                       href="/program"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="py-1.5 text-base font-semibold text-gray-700 hover:text-[#0b6330]"
+                      className={`py-1.5 text-base font-semibold hover:text-[#0b6330] ${
+                        pathname.startsWith("/program") ? "text-[#0b6330] font-bold" : "text-gray-700"
+                      }`}
                     >
                       {t.Program}
                     </Link>
                     <Link
                       href="/kampanye"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="py-1.5 text-base font-semibold text-gray-700 hover:text-[#0b6330]"
+                      className={`py-1.5 text-base font-semibold hover:text-[#0b6330] ${
+                        pathname.startsWith("/kampanye") ? "text-[#0b6330] font-bold" : "text-gray-700"
+                      }`}
                     >
                       {t.Kampanye}
                     </Link>
@@ -505,6 +577,25 @@ export default function Navbar() {
               >
                 {t.BayarZakat}
               </Link>
+
+              {/* Tombol Akun / Masuk Mobile */}
+              {currentUser ? (
+                <Link
+                  href="/akun"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="bg-emerald-50 text-[#005621] border border-emerald-300 font-bold text-[15px] text-center px-5 py-3 rounded-xl shadow-2xs transition-all block mt-2"
+                >
+                  Profil &amp; Single Identity ({currentUser.name ? currentUser.name.split(' ')[0] : 'Saya'})
+                </Link>
+              ) : (
+                <Link
+                  href="/masuk"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="bg-[#005621] hover:bg-[#004218] text-white font-bold text-[15px] text-center px-5 py-3 rounded-xl shadow-2xs transition-all block mt-2"
+                >
+                  Masuk Akun Pendaftar
+                </Link>
+              )}
 
             </div>
           </div>

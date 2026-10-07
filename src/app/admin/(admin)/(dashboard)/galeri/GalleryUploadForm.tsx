@@ -104,8 +104,9 @@ export default function GalleryUploadForm() {
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                         {previews.map((p, i) => (
-                            // eslint-disable-next-line @next/next/no-img-element
+                             
                             <div key={i} className="relative rounded-lg overflow-hidden border border-gray-200 group">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={p.preview} alt={p.file.name} className="w-full h-24 object-cover" />
                                 <button
                                     onClick={(e) => { e.stopPropagation(); removePreview(i); }}

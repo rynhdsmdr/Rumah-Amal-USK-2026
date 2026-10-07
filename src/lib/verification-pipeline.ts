@@ -1,4 +1,4 @@
-import { closest, distance } from 'fastest-levenshtein';
+import { distance } from 'fastest-levenshtein';
 import { PDFDocument } from 'pdf-lib';
 import { createWorker } from 'tesseract.js';
 import path from 'path';
