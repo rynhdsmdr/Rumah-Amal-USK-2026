@@ -4,18 +4,17 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { loginManual, registerManual, loginOrRegisterGoogle } from '@/lib/user-auth';
+import { loginManual, registerManual } from '@/lib/user-auth';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faEnvelope,
   faLock,
-  faUser,
   faArrowRight,
   faSpinner,
   faCheckCircle,
   faGraduationCap,
   faBriefcase,
-  faUsers,
 } from '@fortawesome/free-solid-svg-icons';
 import { faGoogle } from '@fortawesome/free-brands-svg-icons';
 
@@ -25,18 +24,14 @@ export default function MasukClient() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [nama, setNama] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [googleModal, setGoogleModal] = useState(false);
-  const [googleEmail, setGoogleEmail] = useState('');
-  const [googleName, setGoogleName] = useState('');
 
-  // Deteksi domain realtime
+  // Deteksi domain realtime untuk panduan pengguna
   const cleanEmail = email.trim().toLowerCase();
   const isMhs = cleanEmail.endsWith('@mhs.usk.ac.id');
   const isDosen = cleanEmail.endsWith('@usk.ac.id') && !isMhs;
-  const isUmum = cleanEmail.includes('@') && !isMhs && !isDosen;
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +57,7 @@ export default function MasukClient() {
           router.push(redirectParam || '/akun');
         }
       } else {
-        const res = await registerManual({ email, password, name: nama });
+        const res = await registerManual({ email, password });
         if (!res.success) {
           setErrorMsg(res.error || 'Gagal mendaftar akun.');
           return;
@@ -76,31 +71,38 @@ export default function MasukClient() {
     }
   };
 
-  const handleGoogleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!googleEmail.trim()) return;
-    setLoading(true);
+  const handleGoogleOAuth = async () => {
+    setErrorMsg('');
+    setGoogleLoading(true);
     try {
-      const res = await loginOrRegisterGoogle({
-        email: googleEmail,
-        name: googleName || googleEmail.split('@')[0],
-      });
-      if (!res.success) {
-        setErrorMsg(res.error || 'Gagal masuk via Google.');
-        return;
-      }
-      setGoogleModal(false);
       const searchParams = new URLSearchParams(window.location.search);
-      const redirectParam = searchParams.get('redirect');
-      if (res.needsOnboarding) {
-        router.push('/akun/onboarding');
-      } else {
-        router.push(redirectParam || '/akun');
+      const redirectParam = searchParams.get('redirect') || '/akun';
+      const origin = window.location.origin;
+
+      const { data, error } = await supabaseBrowser.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${origin}/auth/callback?redirect=${encodeURIComponent(redirectParam)}`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.url) {
+        window.location.href = data.url;
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Terjadi kesalahan sistem.');
-    } finally {
-      setLoading(false);
+      console.error('[Google Sign-In Error]', err);
+      setErrorMsg(
+        'Gagal membuka layanan masuk Google. Silakan coba beberapa saat lagi atau gunakan formulir masuk manual di bawah.'
+      );
+      setGoogleLoading(false);
     }
   };
 
@@ -113,10 +115,11 @@ export default function MasukClient() {
             <Image
               src="/logo/emblem-ra.png"
               alt="Rumah Amal Masjid Jamik USK"
-              width={100}
-              height={100}
+              width={96}
+              height={96}
               priority
-              className="h-20 sm:h-24 w-auto object-contain mx-auto drop-shadow-xs"
+              style={{ width: 'auto', height: 'auto' }}
+              className="h-20 sm:h-24 object-contain mx-auto drop-shadow-xs"
             />
           </Link>
           <div className="space-y-1">
@@ -131,18 +134,20 @@ export default function MasukClient() {
 
         {/* Card Form */}
         <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-7 sm:p-8 space-y-6">
-          {/* Tombol Masuk Google */}
+          {/* Tombol Masuk Google Langsung ke Sign In Google */}
           <div>
             <button
               type="button"
-              onClick={() => {
-                setGoogleEmail(email || '');
-                setGoogleModal(true);
-              }}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-bold text-xs sm:text-sm transition-all shadow-2xs cursor-pointer"
+              onClick={handleGoogleOAuth}
+              disabled={googleLoading || loading}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-bold text-xs sm:text-sm transition-all shadow-2xs cursor-pointer disabled:opacity-50"
             >
-              <FontAwesomeIcon icon={faGoogle} className="text-red-500 text-base" />
-              <span>Lanjutkan dengan Akun Google</span>
+              {googleLoading ? (
+                <FontAwesomeIcon icon={faSpinner} className="animate-spin text-gray-600" />
+              ) : (
+                <FontAwesomeIcon icon={faGoogle} className="text-red-500 text-base" />
+              )}
+              <span>{googleLoading ? 'Membuka Google Sign-In...' : 'Lanjutkan dengan Akun Google'}</span>
             </button>
           </div>
 
@@ -175,95 +180,87 @@ export default function MasukClient() {
             </button>
           </div>
 
+          {/* Alert Error */}
           {errorMsg && (
             <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 font-semibold flex items-start gap-2">
-              <span className="shrink-0 text-base">⚠️</span>
+              <span className="text-base shrink-0">⚠️</span>
               <span className="leading-snug">{errorMsg}</span>
             </div>
           )}
 
-          {/* Form */}
+          {/* Form Manual */}
           <form onSubmit={handleManualSubmit} className="space-y-4">
-            {tab === 'register' && (
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">Nama Lengkap</label>
-                <div className="relative">
-                  <FontAwesomeIcon icon={faUser} className="absolute left-3.5 top-3 text-gray-400 text-xs" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nama sesuai KTP/KTM"
-                    value={nama}
-                    onChange={(e) => setNama(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] transition-colors"
-                  />
-                </div>
-              </div>
-            )}
 
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">Alamat Email</label>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Alamat Email
+              </label>
               <div className="relative">
-                <FontAwesomeIcon icon={faEnvelope} className="absolute left-3.5 top-3 text-gray-400 text-xs" />
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                  <FontAwesomeIcon icon={faEnvelope} />
+                </div>
                 <input
                   type="email"
                   required
-                  placeholder="contoh: nama@mhs.usk.ac.id atau nama@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] transition-colors"
+                  placeholder="contoh: nama@mhs.usk.ac.id atau nama@gmail.com"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] focus:ring-2 focus:ring-emerald-50 transition-all"
                 />
               </div>
 
-              {/* Realtime Domain Detection Feedback */}
-              {isMhs && (
-                <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-emerald-800 text-[11px] font-bold animate-fadeIn">
-                  <FontAwesomeIcon icon={faGraduationCap} className="text-emerald-600" />
-                  <span>Email Mahasiswa USK terdeteksi (Otomatis kelompok Mahasiswa)</span>
-                </div>
-              )}
-              {isDosen && (
-                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 text-blue-800 text-[11px] font-bold animate-fadeIn">
-                  <FontAwesomeIcon icon={faBriefcase} className="text-blue-600" />
-                  <span>Email Dosen / Staff USK terdeteksi (Otomatis kelompok Dosen/Staff)</span>
-                </div>
-              )}
-              {isUmum && (
-                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-800 text-[11px] font-bold animate-fadeIn">
-                  <FontAwesomeIcon icon={faUsers} className="text-amber-600" />
-                  <span>Email Umum (Pilihan kelompok tersedia di pengisian profil berikutnya)</span>
+              {/* Live Domain Hints */}
+              {cleanEmail && (
+                <div className="mt-2 text-2xs space-y-1">
+                  {isMhs && (
+                    <div className="flex items-center gap-1.5 text-emerald-700 font-bold bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                      <FontAwesomeIcon icon={faGraduationCap} />
+                      <span>Terdeteksi Mahasiswa USK (Akses khusus Beasiswa UKT dsb)</span>
+                    </div>
+                  )}
+                  {isDosen && (
+                    <div className="flex items-center gap-1.5 text-blue-700 font-bold bg-blue-50 p-2 rounded-lg border border-blue-200">
+                      <FontAwesomeIcon icon={faBriefcase} />
+                      <span>Terdeteksi Dosen / Staf USK</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">Kata Sandi</label>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Kata Sandi
+              </label>
               <div className="relative">
-                <FontAwesomeIcon icon={faLock} className="absolute left-3.5 top-3 text-gray-400 text-xs" />
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                  <FontAwesomeIcon icon={faLock} />
+                </div>
                 <input
                   type="password"
                   required
-                  placeholder="Minimal 6 karakter"
+                  minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] transition-colors"
+                  placeholder="Minimal 6 karakter"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] focus:ring-2 focus:ring-emerald-50 transition-all"
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 rounded-xl bg-[#005621] hover:bg-[#004219] text-white font-extrabold text-xs sm:text-sm shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
+              disabled={loading || googleLoading}
+              className="w-full py-3 px-4 rounded-xl bg-[#005621] hover:bg-[#004218] text-white font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {loading ? (
                 <>
                   <FontAwesomeIcon icon={faSpinner} className="animate-spin" />
-                  <span>Memproses…</span>
+                  <span>Memproses...</span>
                 </>
               ) : (
                 <>
-                  <span>{tab === 'login' ? 'Masuk ke Akun' : 'Daftar Sekarang'}</span>
+                  <span>{tab === 'login' ? 'Masuk ke Akun' : 'Daftar Akun Baru'}</span>
                   <FontAwesomeIcon icon={faArrowRight} />
                 </>
               )}
@@ -271,81 +268,13 @@ export default function MasukClient() {
           </form>
         </div>
 
-        {/* Back Link */}
-        <div className="text-center">
-          <Link href="/" className="text-xs text-gray-500 hover:text-[#005621] font-bold transition-colors">
+        {/* Footer Nav */}
+        <div className="text-center text-xs text-gray-500">
+          <Link href="/" className="hover:text-gray-900 transition-colors">
             ← Kembali ke Beranda
           </Link>
         </div>
       </div>
-
-      {/* MODAL SIMULASI GOOGLE SIGN-IN */}
-      {googleModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-gray-100 overflow-hidden p-6 space-y-4 animate-scaleUp">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2">
-                <FontAwesomeIcon icon={faGoogle} className="text-red-500 text-lg" />
-                <h3 className="font-extrabold text-gray-900 text-sm">Masuk dengan Google</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setGoogleModal(false)}
-                className="text-gray-400 hover:text-gray-600 font-bold text-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-500 leading-relaxed">
-              Masukkan email akun Google Anda (bisa menggunakan email kampus <b>@mhs.usk.ac.id</b>, <b>@usk.ac.id</b>, atau <b>@gmail.com</b>).
-            </p>
-
-            <form onSubmit={handleGoogleSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Email Google</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="nama@mhs.usk.ac.id atau nama@gmail.com"
-                  value={googleEmail}
-                  onChange={(e) => setGoogleEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Nama Tampilan</label>
-                <input
-                  type="text"
-                  placeholder="Nama Lengkap Anda"
-                  value={googleName}
-                  onChange={(e) => setGoogleName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setGoogleModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading || !googleEmail.trim()}
-                  className="px-5 py-2 text-xs font-extrabold text-white bg-[#005621] hover:bg-[#004219] rounded-xl shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {loading ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : <FontAwesomeIcon icon={faCheckCircle} />}
-                  <span>Lanjutkan Masuk</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

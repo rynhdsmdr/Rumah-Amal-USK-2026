@@ -6,7 +6,7 @@ import AkunDashboardClient from './AkunDashboardClient';
 
 export const metadata: Metadata = {
   title: 'Akun Pendaftar | Rumah Amal USK',
-  description: 'Dashboard akun pendaftar, Single Identity, dan akses pendaftaran program bantuan Rumah Amal USK.',
+  description: 'Dashboard akun pendaftar, biodata profil, dan akses pendaftaran program bantuan Rumah Amal USK.',
 };
 
 export const dynamic = 'force-dynamic';

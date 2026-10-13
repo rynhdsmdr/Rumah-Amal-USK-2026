@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import OnboardingClient from './OnboardingClient';
 
 export const metadata = {
-  title: 'Lengkapi Profil Single Identity - Rumah Amal USK',
+  title: 'Lengkapi Profil & Biodata - Rumah Amal USK',
   description: 'Pengisian profil permanen biodata dan berkas untuk pendaftaran program bantuan Rumah Amal USK',
 };
 
@@ -23,6 +23,7 @@ export default async function OnboardingPage() {
       initialKelompok={detection.kelompok}
       isLocked={detection.isLocked}
       availableOptions={detection.availableOptions}
+      hasSubmissions={fullData?.hasSubmissions || false}
     />
   );
 }

@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { verifyProfileIdentityDocuments } from '@/lib/verification-pipeline';
 
 const SESSION_COOKIE_NAME = 'ra_user_session';
 const SESSION_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || 'rumah-amal-session-key-2026';
@@ -220,7 +221,7 @@ export async function registerManual(formData: { email: string; password?: strin
     const user = await prisma.userAccount.create({
       data: {
         email: cleanEmail,
-        name: formData.name?.trim() || cleanEmail.split('@')[0],
+        name: formData.name?.trim() || null,
         passwordHash,
         provider: 'manual',
       },
@@ -247,13 +248,20 @@ export async function getFullUserProfile() {
   const session = await getUserSession();
   if (!session) return null;
 
-  const profile = await prisma.userProfile.findUnique({
-    where: { userAccountId: session.id },
-  });
+  const [profile, submissionsCount] = await Promise.all([
+    prisma.userProfile.findUnique({
+      where: { userAccountId: session.id },
+    }),
+    prisma.submission.count({
+      where: { userAccountId: session.id },
+    }),
+  ]);
 
   return {
     user: session,
     profile,
+    submissionsCount,
+    hasSubmissions: submissionsCount > 0,
   };
 }
 
@@ -280,13 +288,105 @@ export async function saveSingleIdentityProfile(data: {
   }
 
   try {
+    const cleanEmail = session.email.toLowerCase().trim();
+    let finalKelompok = data.kelompok;
+    if (cleanEmail.endsWith('@mhs.usk.ac.id')) {
+      finalKelompok = 'MAHASISWA_USK';
+    } else if (cleanEmail.endsWith('@usk.ac.id')) {
+      finalKelompok = 'DOSEN_STAFF_USK';
+    }
+
+    // 1. Cek Submission Lock (Kunci Total jika sudah pernah mendaftar program)
+    const [existingProfile, submissionsCount] = await Promise.all([
+      prisma.userProfile.findUnique({ where: { userAccountId: session.id } }),
+      prisma.submission.count({ where: { userAccountId: session.id } }),
+    ]);
+
+    const hasSubmissions = submissionsCount > 0;
+
+    // Jika akun sudah memiliki minimal 1 riwayat pendaftaran:
+    // Seluruh biodata pokok (Nama, NIK, NPM, Kelompok) & berkas identitas DIKUNCI TOTAL (FREEZE).
+    // Hanya nomor WhatsApp dan alamat domisili yang diizinkan untuk diperbarui.
+    if (hasSubmissions && existingProfile) {
+      const updatedProfile = await prisma.userProfile.update({
+        where: { userAccountId: session.id },
+        data: {
+          noWa: data.noWa.trim(),
+          alamat: data.alamat?.trim() || existingProfile.alamat,
+          pekerjaan: data.pekerjaan?.trim() || existingProfile.pekerjaan,
+        },
+      });
+      return {
+        success: true,
+        profile: updatedProfile,
+        isLockedFreeze: true,
+        message: 'Kontak WhatsApp & Alamat berhasil diperbarui. Data pokok dan berkas tetap terkunci permanen karena akun telah memiliki riwayat pendaftaran.',
+      };
+    }
+
+    // 2. Pilar A: Unique Constraint NIK & NPM (1 NIK = 1 Orang, 1 NPM = 1 Mahasiswa)
+    const cleanNik = data.nik.trim();
+    if (!/^\d{16}$/.test(cleanNik)) {
+      return { success: false, error: 'NIK harus berupa 16 digit angka resmi sesuai KTP.' };
+    }
+
+    const existingNikUser = await prisma.userProfile.findFirst({
+      where: {
+        nik: cleanNik,
+        userAccountId: { not: session.id },
+      },
+    });
+    if (existingNikUser) {
+      return {
+        success: false,
+        error: `NIK "${cleanNik}" sudah pernah terdaftar pada akun lain. Satu NIK hanya dapat didaftarkan untuk satu akun resmi Rumah Amal USK demi mencegah duplikasi identitas.`,
+      };
+    }
+
+    if (finalKelompok === 'MAHASISWA_USK' && data.npm && data.npm.trim()) {
+      const cleanNpm = data.npm.trim();
+      const existingNpmUser = await prisma.userProfile.findFirst({
+        where: {
+          npm: cleanNpm,
+          userAccountId: { not: session.id },
+        },
+      });
+      if (existingNpmUser) {
+        return {
+          success: false,
+          error: `NPM "${cleanNpm}" sudah pernah terdaftar pada akun mahasiswa lain. Satu NPM hanya berlaku untuk satu akun mahasiswa resmi.`,
+        };
+      }
+    }
+
+    // 3. Pilar Rencana Automasi Verifikasi Berkas (OCR + Matching)
+    // Jalankan pemeriksaan kesesuaian berkas saat tombol simpan ditekan
+    if (data.ktpUrl || data.ktmUrl) {
+      const docVerification = await verifyProfileIdentityDocuments({
+        namaLengkap: data.namaLengkap.trim(),
+        nik: cleanNik,
+        npm: data.npm?.trim(),
+        kelompok: finalKelompok,
+        ktpUrl: data.ktpUrl?.trim(),
+        ktmUrl: data.ktmUrl?.trim(),
+      });
+
+      if (!docVerification.isValid) {
+        return {
+          success: false,
+          error: docVerification.error || 'Data NIK/NPM atau Nama Lengkap tidak sesuai dengan dokumen identitas yang diunggah. Harap periksa kembali berkas Anda sebelum menyimpan.',
+        };
+      }
+    }
+
+    // 4. Simpan Profil & Kunci
     const profile = await prisma.userProfile.upsert({
       where: { userAccountId: session.id },
       create: {
         userAccountId: session.id,
-        kelompok: data.kelompok,
+        kelompok: finalKelompok,
         namaLengkap: data.namaLengkap.trim(),
-        nik: data.nik.trim(),
+        nik: cleanNik,
         noWa: data.noWa.trim(),
         npm: data.npm?.trim() || null,
         fakultas: data.fakultas?.trim() || null,
@@ -302,9 +402,9 @@ export async function saveSingleIdentityProfile(data: {
         isCompleted: true,
       },
       update: {
-        kelompok: data.kelompok,
+        kelompok: finalKelompok,
         namaLengkap: data.namaLengkap.trim(),
-        nik: data.nik.trim(),
+        nik: cleanNik,
         noWa: data.noWa.trim(),
         npm: data.npm?.trim() || null,
         fakultas: data.fakultas?.trim() || null,
@@ -321,7 +421,7 @@ export async function saveSingleIdentityProfile(data: {
       },
     });
 
-    // Perbarui nama di tabel akun jika ada
+    // Perbarui nama di tabel akun
     await prisma.userAccount.update({
       where: { id: session.id },
       data: { name: data.namaLengkap.trim() },
@@ -333,3 +433,4 @@ export async function saveSingleIdentityProfile(data: {
     return { success: false, error: error.message || 'Gagal menyimpan profil biodata.' };
   }
 }
+

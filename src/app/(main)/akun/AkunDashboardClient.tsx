@@ -138,6 +138,11 @@ export default function AkunDashboardClient({ user, profile, submissions }: Prop
                     <FontAwesomeIcon icon={kelompokInfo.icon} />
                     <span>{kelompokInfo.label}</span>
                   </span>
+                  {submissions && submissions.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                      <span>🔒 Terkunci Permanen</span>
+                    </span>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 font-medium pt-0.5">
                   <span className="inline-flex items-center gap-1.5">
@@ -166,7 +171,7 @@ export default function AkunDashboardClient({ user, profile, submissions }: Prop
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs shadow-2xs transition-all cursor-pointer"
               >
                 <FontAwesomeIcon icon={faEdit} className="text-emerald-700" />
-                <span>Ubah Single Identity</span>
+                <span>{submissions && submissions.length > 0 ? 'Perbarui Kontak (WA)' : 'Ubah Biodata'}</span>
               </Link>
               <button
                 type="button"
@@ -192,15 +197,11 @@ export default function AkunDashboardClient({ user, profile, submissions }: Prop
           </div>
 
           <div className="relative z-10 max-w-2xl space-y-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-2xs font-extrabold uppercase tracking-wider bg-white/15 text-white backdrop-blur-xs border border-white/20">
-              <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-300" />
-              <span>Akses Khusus Terbuka</span>
-            </span>
             <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
               Katalog Pendaftaran Bantuan &amp; Beasiswa
             </h2>
             <p className="text-xs sm:text-sm text-emerald-100 leading-relaxed font-normal">
-              Seluruh pendaftaran program bantuan Rumah Amal USK hanya dapat diakses melalui portal akun ini. Isian biodata dan berkas Single Identity Anda akan terlampir otomatis.
+              Seluruh pendaftaran program bantuan Rumah Amal USK hanya dapat diakses melalui portal akun ini. Isian biodata dan berkas identitas Anda akan terlampir otomatis.
             </p>
             <div className="pt-2">
               <Link

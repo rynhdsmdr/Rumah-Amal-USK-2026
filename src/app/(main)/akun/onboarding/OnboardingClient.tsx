@@ -11,11 +11,25 @@ import {
   faUsers,
   faCheckCircle,
   faSpinner,
-  faLock,
-  faIdCard,
   faPhone,
   faArrowRight,
 } from '@fortawesome/free-solid-svg-icons';
+
+const FAKULTAS_USK_OPTIONS = [
+  'Fakultas Ekonomi dan Bisnis',
+  'Fakultas Kedokteran Hewan',
+  'Fakultas Hukum',
+  'Fakultas Teknik',
+  'Fakultas Pertanian',
+  'Fakultas Keguruan dan Ilmu Pendidikan',
+  'Fakultas Kedokteran',
+  'Fakultas Matematika dan Ilmu Pengetahuan Alam',
+  'Fakultas Ilmu Sosial dan Ilmu Politik',
+  'Fakultas Kelautan dan Perikanan',
+  'Fakultas Keperawatan',
+  'Fakultas Kedokteran Gigi',
+  'Sekolah Pascasarjana',
+];
 
 interface Props {
   user: UserSessionData;
@@ -23,6 +37,7 @@ interface Props {
   initialKelompok: 'MAHASISWA_USK' | 'DOSEN_STAFF_USK' | 'MASYARAKAT_UMUM';
   isLocked: boolean;
   availableOptions: Array<{ id: string; label: string }>;
+  hasSubmissions?: boolean;
 }
 
 export default function OnboardingClient({
@@ -31,14 +46,33 @@ export default function OnboardingClient({
   initialKelompok,
   isLocked,
   availableOptions,
+  hasSubmissions = false,
 }: Props) {
   const router = useRouter();
-  const [kelompok, setKelompok] = useState<'MAHASISWA_USK' | 'DOSEN_STAFF_USK' | 'MASYARAKAT_UMUM'>(
-    existingProfile?.kelompok || initialKelompok
-  );
 
-  // Form State
-  const [namaLengkap, setNamaLengkap] = useState(existingProfile?.namaLengkap || user.name || '');
+  // Validasi domain email secara mutlak
+  const emailClean = (user?.email || '').trim().toLowerCase();
+  const isMhsDomain = emailClean.endsWith('@mhs.usk.ac.id');
+  const isDosenDomain = emailClean.endsWith('@usk.ac.id') && !isMhsDomain;
+
+  // Jika domain kampus, kelompok dikunci mutlak (tidak boleh beralih)
+  const lockedKelompok = isMhsDomain
+    ? 'MAHASISWA_USK'
+    : isDosenDomain
+    ? 'DOSEN_STAFF_USK'
+    : existingProfile?.kelompok || initialKelompok || 'MASYARAKAT_UMUM';
+
+  const [kelompok, setKelompok] = useState<'MAHASISWA_USK' | 'DOSEN_STAFF_USK' | 'MASYARAKAT_UMUM'>(
+    lockedKelompok
+  );
+  const handleSetKelompok = (val: 'MAHASISWA_USK' | 'DOSEN_STAFF_USK' | 'MASYARAKAT_UMUM') => {
+    if (isMhsDomain || isDosenDomain) return; // Terkunci mutlak
+    setKelompok(val);
+    setErrorMsg('');
+  };
+
+  // Form State: Nama default dibiarkan kosong untuk pendaftar baru
+  const [namaLengkap, setNamaLengkap] = useState(existingProfile?.namaLengkap || '');
   const [nik, setNik] = useState(existingProfile?.nik || '');
   const [noWa, setNoWa] = useState(existingProfile?.noWa || '');
 
@@ -137,11 +171,11 @@ export default function OnboardingClient({
       });
 
       if (!res.success) {
-        setErrorMsg(res.error || 'Gagal menyimpan profil Single Identity.');
+        setErrorMsg(res.error || 'Gagal menyimpan profil biodata.');
         return;
       }
 
-      setSuccessMsg('Profil Single Identity berhasil disimpan! Mengalihkan ke halaman akun…');
+      setSuccessMsg('Profil biodata berhasil disimpan! Mengalihkan ke halaman akun…');
       setTimeout(() => {
         router.push('/akun');
       }, 1000);
@@ -155,23 +189,11 @@ export default function OnboardingClient({
   return (
     <div className="min-h-screen bg-gray-50/70 py-10 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-3xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-[#005621] text-xs font-black border border-emerald-200">
-              <FontAwesomeIcon icon={faIdCard} /> Single Identity Rumah Amal
-            </span>
-            <h1 className="text-xl sm:text-2xl font-black text-gray-900">
-              Lengkapi Profil Biodata & Berkas
-            </h1>
-            <p className="text-xs text-gray-500 max-w-xl">
-              Cukup isi data permanen satu kali saja. Saat mendaftar program di kemudian hari, Anda tidak perlu mengunggah ulang data ini.
-            </p>
-          </div>
-          <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 text-right shrink-0">
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Email Akun</p>
-            <p className="text-xs font-black text-gray-800">{user.email}</p>
-          </div>
+        {/* Header Section */}
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100">
+          <h1 className="text-xl sm:text-2xl font-black text-gray-900">
+            Lengkapi Profil Biodata &amp; Berkas
+          </h1>
         </div>
 
         {/* Tab Switcher / Locked Banner */}
@@ -180,69 +202,147 @@ export default function OnboardingClient({
             <div>
               <h2 className="text-sm font-black text-gray-900">Kelompok Pendaftar</h2>
               <p className="text-xs text-gray-400">
-                Pilih atau pastikan kelompok Anda sesuai identitas
+                Kategori profil pendaftar sesuai identitas Anda
               </p>
             </div>
-            {isLocked && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-bold">
-                <FontAwesomeIcon icon={faLock} className="text-2xs" /> Terkunci Otomatis via Email Kampus
+            {isMhsDomain && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-[#005621] border border-emerald-200 rounded-full text-xs font-bold">
+                <FontAwesomeIcon icon={faCheckCircle} className="text-2xs text-[#005621]" /> Mahasiswa USK
+              </span>
+            )}
+            {isDosenDomain && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded-full text-xs font-bold">
+                <FontAwesomeIcon icon={faCheckCircle} className="text-2xs text-blue-600" /> Dosen / Staff USK
               </span>
             )}
           </div>
 
-          {/* Opsi Tab Switch */}
-          {isLocked ? (
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#005621] text-white flex items-center justify-center shrink-0">
-                <FontAwesomeIcon icon={kelompok === 'MAHASISWA_USK' ? faGraduationCap : faBriefcase} className="text-lg" />
+          {/* Jika Akun Mahasiswa USK (@mhs.usk.ac.id): Langsung Mahasiswa USK, tanpa opsi lain */}
+          {isMhsDomain ? (
+            <div className="p-4.5 rounded-2xl bg-emerald-50/80 border border-emerald-200 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-[#005621] text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <FontAwesomeIcon icon={faGraduationCap} className="text-xl" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-[#005621]">
+                    Mahasiswa USK
+                  </p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Terhubung melalui email resmi <b>{user.email}</b>. Profil biodata Anda otomatis diproses dalam kelompok Mahasiswa USK.
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-black text-gray-900">
-                  {kelompok === 'MAHASISWA_USK' ? 'Mahasiswa USK Terverifikasi' : 'Dosen / Staff USK Terverifikasi'}
-                </p>
-                <p className="text-[11px] text-gray-600">
-                  Sistem otomatis mengarahkan ke formulir {kelompok === 'MAHASISWA_USK' ? 'Mahasiswa USK' : 'Dosen & Staff USK'} berdasarkan domain email Anda ({user.email}).
-                </p>
+              <span className="hidden sm:inline-flex px-3 py-1 bg-emerald-100 text-[#005621] border border-emerald-200 rounded-lg text-2xs font-extrabold uppercase tracking-wider shrink-0">
+                Civitas Akademika
+              </span>
+            </div>
+          ) : isDosenDomain ? (
+            /* Jika Akun Dosen/Staf USK (@usk.ac.id): Langsung Dosen / Staff USK, tanpa opsi lain */
+            <div className="p-4.5 rounded-2xl bg-blue-50/80 border border-blue-200 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-blue-700 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <FontAwesomeIcon icon={faBriefcase} className="text-xl" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-blue-900">
+                    Dosen / Staff USK
+                  </p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Terhubung melalui email resmi <b>{user.email}</b>. Profil biodata Anda otomatis diproses dalam kelompok Dosen &amp; Tenaga Kependidikan USK.
+                  </p>
+                </div>
               </div>
+              <span className="hidden sm:inline-flex px-3 py-1 bg-blue-100 text-blue-900 border border-blue-200 rounded-lg text-2xs font-extrabold uppercase tracking-wider shrink-0">
+                Civitas Akademika
+              </span>
+            </div>
+          ) : existingProfile?.kelompok ? (
+            /* Jika Email Publik & Sudah Pernah Simpan Biodata: Tetap pada kelompok terdaftar */
+            <div className="p-4.5 rounded-2xl bg-gray-50 border border-gray-200 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-gray-800 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <FontAwesomeIcon
+                    icon={
+                      kelompok === 'MAHASISWA_USK'
+                        ? faGraduationCap
+                        : kelompok === 'DOSEN_STAFF_USK'
+                        ? faBriefcase
+                        : faUsers
+                    }
+                    className="text-xl"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-gray-900">
+                    {kelompok === 'MAHASISWA_USK'
+                      ? 'Mahasiswa USK'
+                      : kelompok === 'DOSEN_STAFF_USK'
+                      ? 'Dosen / Staff USK'
+                      : 'Masyarakat Umum'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Kategori kelompok pendaftar yang tersimpan untuk akun <b>{user.email}</b>.
+                  </p>
+                </div>
+              </div>
+              <span className="hidden sm:inline-flex px-3 py-1 bg-gray-200 text-gray-800 rounded-lg text-2xs font-extrabold uppercase tracking-wider shrink-0">
+                Kategori Terdaftar
+              </span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-1.5 bg-gray-100/80 rounded-2xl">
-              {availableOptions.map((opt) => {
-                const active = kelompok === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      setKelompok(opt.id as any);
-                      setErrorMsg('');
-                    }}
-                    className={`py-3 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                      active
-                        ? 'bg-white text-[#005621] shadow-sm ring-1 ring-black/5'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
-                    }`}
-                  >
-                    <FontAwesomeIcon
-                      icon={
-                        opt.id === 'MAHASISWA_USK'
-                          ? faGraduationCap
-                          : opt.id === 'DOSEN_STAFF_USK'
-                          ? faBriefcase
-                          : faUsers
-                      }
-                      className={active ? 'text-[#005621]' : 'text-gray-400'}
-                    />
-                    <span>{opt.label}</span>
-                  </button>
-                );
-              })}
+            /* Email Publik Baru: Pilihan kategori kelompok */
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 font-medium">
+                Pilih kategori profil yang sesuai dengan pendaftaran Anda:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-1.5 bg-gray-100/80 rounded-2xl">
+                {[
+                  { id: 'MASYARAKAT_UMUM', label: 'Masyarakat Umum', icon: faUsers },
+                  { id: 'MAHASISWA_USK', label: 'Mahasiswa USK', icon: faGraduationCap },
+                  { id: 'DOSEN_STAFF_USK', label: 'Dosen / Staff USK', icon: faBriefcase },
+                ].map((opt) => {
+                  const active = kelompok === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleSetKelompok(opt.id as any)}
+                      className={`py-3 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        active
+                          ? 'bg-white text-[#005621] shadow-sm ring-1 ring-black/5'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
+                      }`}
+                    >
+                      <FontAwesomeIcon
+                        icon={opt.icon}
+                        className={active ? 'text-[#005621]' : 'text-gray-400'}
+                      />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
 
         {/* Form Biodata & Berkas (Dinamis Sesuai Tab Kelompok) */}
         <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100 space-y-6">
+          {hasSubmissions && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/90 border border-amber-300 text-amber-900 flex items-start gap-3">
+              <span className="text-xl shrink-0 mt-0.5">🔒</span>
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm font-black">
+                  Biodata Pokok &amp; Berkas Terkunci Permanen
+                </p>
+                <p className="text-xs leading-relaxed text-amber-800">
+                  Akun Anda telah memiliki riwayat pendaftaran program bantuan di Rumah Amal USK. Untuk menjaga keaslian data dan mencegah penyalahgunaan akun, data pokok (Nama Lengkap, NIK, NPM/NIP, Kelompok) dan berkas resmi telah dibekukan. Anda hanya dapat memperbarui nomor kontak aktif (WhatsApp) atau alamat domisili. Untuk permohonan koreksi data pokok, silakan hubungi admin Rumah Amal USK.
+                </p>
+              </div>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 font-semibold flex items-start gap-2">
               <span className="text-base shrink-0">⚠️</span>
@@ -267,35 +367,46 @@ export default function OnboardingClient({
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">
                   Nama Lengkap <span className="text-red-500">*</span>
+                  {hasSubmissions && <span className="ml-2 text-2xs text-amber-700 font-bold">🔒 Terkunci</span>}
                 </label>
                 <input
                   type="text"
                   required
+                  readOnly={hasSubmissions}
+                  disabled={hasSubmissions}
                   placeholder="Sesuai KTP / Berkas Resmi"
                   value={namaLengkap}
                   onChange={(e) => setNamaLengkap(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
+                  className={`w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] ${
+                    hasSubmissions ? 'bg-gray-100 text-gray-500 cursor-not-allowed select-none' : ''
+                  }`}
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">
                   NIK (Nomor Induk Kependudukan) <span className="text-red-500">*</span>
+                  {hasSubmissions && <span className="ml-2 text-2xs text-amber-700 font-bold">🔒 Terkunci</span>}
                 </label>
                 <input
                   type="text"
                   required
                   maxLength={16}
+                  readOnly={hasSubmissions}
+                  disabled={hasSubmissions}
                   placeholder="16 digit NIK KTP"
                   value={nik}
                   onChange={(e) => setNik(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
+                  className={`w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] ${
+                    hasSubmissions ? 'bg-gray-100 text-gray-500 cursor-not-allowed select-none' : ''
+                  }`}
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">
                   Nomor WhatsApp Aktif <span className="text-red-500">*</span>
+                  {hasSubmissions && <span className="ml-2 text-2xs text-emerald-700 font-bold">✓ Dapat Diubah</span>}
                 </label>
                 <div className="relative">
                   <FontAwesomeIcon icon={faPhone} className="absolute left-3.5 top-3 text-gray-400 text-xs" />
@@ -316,41 +427,60 @@ export default function OnboardingClient({
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       NPM (Nomor Pokok Mahasiswa) <span className="text-red-500">*</span>
+                      {hasSubmissions && <span className="ml-2 text-2xs text-amber-700 font-bold">🔒 Terkunci</span>}
                     </label>
                     <input
                       type="text"
                       required
+                      readOnly={hasSubmissions}
+                      disabled={hasSubmissions}
                       placeholder="Contoh: 2108107010001"
                       value={npm}
                       onChange={(e) => setNpm(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] ${
+                        hasSubmissions ? 'bg-gray-100 text-gray-500 cursor-not-allowed select-none' : ''
+                      }`}
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       Fakultas <span className="text-red-500">*</span>
+                      {hasSubmissions && <span className="ml-2 text-2xs text-amber-700 font-bold">🔒 Terkunci</span>}
                     </label>
-                    <input
-                      type="text"
+                    <select
                       required
-                      placeholder="Contoh: Fakultas MIPA"
+                      disabled={hasSubmissions}
                       value={fakultas}
                       onChange={(e) => setFakultas(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
-                    />
+                      className={`w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] bg-white ${
+                        hasSubmissions ? 'bg-gray-100 text-gray-500 cursor-not-allowed select-none' : 'cursor-pointer'
+                      }`}
+                    >
+                      <option value="">-- Pilih Fakultas di USK --</option>
+                      {FAKULTAS_USK_OPTIONS.map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       Program Studi / Jurusan
+                      {hasSubmissions && <span className="ml-2 text-2xs text-amber-700 font-bold">🔒 Terkunci</span>}
                     </label>
                     <input
                       type="text"
+                      readOnly={hasSubmissions}
+                      disabled={hasSubmissions}
                       placeholder="Contoh: Informatika"
                       value={prodi}
                       onChange={(e) => setProdi(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] ${
+                        hasSubmissions ? 'bg-gray-100 text-gray-500 cursor-not-allowed select-none' : ''
+                      }`}
                     />
                   </div>
                 </>
@@ -362,28 +492,38 @@ export default function OnboardingClient({
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       NIP / NIDN <span className="text-red-500">*</span>
+                      {hasSubmissions && <span className="ml-2 text-2xs text-amber-700 font-bold">🔒 Terkunci</span>}
                     </label>
                     <input
                       type="text"
                       required
+                      readOnly={hasSubmissions}
+                      disabled={hasSubmissions}
                       placeholder="NIP Pegawai atau NIDN"
                       value={nip}
                       onChange={(e) => setNip(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] ${
+                        hasSubmissions ? 'bg-gray-100 text-gray-500 cursor-not-allowed select-none' : ''
+                      }`}
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       Unit Kerja / Fakultas <span className="text-red-500">*</span>
+                      {hasSubmissions && <span className="ml-2 text-2xs text-amber-700 font-bold">🔒 Terkunci</span>}
                     </label>
                     <input
                       type="text"
                       required
+                      readOnly={hasSubmissions}
+                      disabled={hasSubmissions}
                       placeholder="Contoh: Biro Akademik / Fakultas Kedokteran"
                       value={unitKerja}
                       onChange={(e) => setUnitKerja(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621]"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#005621] ${
+                        hasSubmissions ? 'bg-gray-100 text-gray-500 cursor-not-allowed select-none' : ''
+                      }`}
                     />
                   </div>
                 </>
@@ -395,6 +535,7 @@ export default function OnboardingClient({
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       Pekerjaan Saat Ini
+                      {hasSubmissions && <span className="ml-2 text-2xs text-emerald-700 font-bold">✓ Dapat Diubah</span>}
                     </label>
                     <input
                       type="text"
@@ -408,6 +549,7 @@ export default function OnboardingClient({
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       Alamat Domisili <span className="text-red-500">*</span>
+                      {hasSubmissions && <span className="ml-2 text-2xs text-emerald-700 font-bold">✓ Dapat Diubah</span>}
                     </label>
                     <textarea
                       required
@@ -427,10 +569,12 @@ export default function OnboardingClient({
           <div className="space-y-4 pt-4 border-t border-gray-100">
             <div>
               <h3 className="text-sm font-black text-gray-900">
-                2. Berkas Permanen (Single Identity Berkas)
+                2. Berkas Dokumen Permanen (KTP, KTM, KK)
               </h3>
               <p className="text-[11px] text-gray-400">
-                Unggah dokumen foto/scan (JPG, PNG, atau PDF). Berkas ini akan tersimpan permanen di akun Anda.
+                {hasSubmissions
+                  ? 'Berkas ini telah terkunci permanen sesuai riwayat pendaftaran Anda.'
+                  : 'Unggah dokumen foto/scan (JPG, PNG, atau PDF). Sistem akan memeriksa keaslian dan kesesuaian berkas secara otomatis.'}
               </p>
             </div>
 
@@ -445,19 +589,37 @@ export default function OnboardingClient({
                     </span>
                   )}
                 </div>
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleFileUpload('ktp', f);
-                  }}
-                  className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#005621] file:text-white cursor-pointer"
-                />
-                {uploadingField === 'ktp' && (
-                  <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                    <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Mengunggah KTP…
-                  </p>
+                {hasSubmissions ? (
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-2xs text-amber-800 font-bold">🔒 Terkunci dari Riwayat Pendaftaran</span>
+                    {ktpUrl && (
+                      <a
+                        href={ktpUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[#005621] hover:underline font-bold"
+                      >
+                        Lihat Berkas ↗
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleFileUpload('ktp', f);
+                      }}
+                      className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#005621] file:text-white cursor-pointer"
+                    />
+                    {uploadingField === 'ktp' && (
+                      <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                        <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Mengunggah KTP…
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -472,19 +634,37 @@ export default function OnboardingClient({
                       </span>
                     )}
                   </div>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleFileUpload('ktm', f);
-                    }}
-                    className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#005621] file:text-white cursor-pointer"
-                  />
-                  {uploadingField === 'ktm' && (
-                    <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                      <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Mengunggah KTM…
-                    </p>
+                  {hasSubmissions ? (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-2xs text-amber-800 font-bold">🔒 Terkunci dari Riwayat Pendaftaran</span>
+                      {ktmUrl && (
+                        <a
+                          href={ktmUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[#005621] hover:underline font-bold"
+                        >
+                          Lihat Berkas ↗
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleFileUpload('ktm', f);
+                        }}
+                        className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#005621] file:text-white cursor-pointer"
+                      />
+                      {uploadingField === 'ktm' && (
+                        <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                          <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Mengunggah KTM…
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -500,19 +680,37 @@ export default function OnboardingClient({
                       </span>
                     )}
                   </div>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleFileUpload('pegawai', f);
-                    }}
-                    className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#005621] file:text-white cursor-pointer"
-                  />
-                  {uploadingField === 'pegawai' && (
-                    <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                      <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Mengunggah Kartu Pegawai…
-                    </p>
+                  {hasSubmissions ? (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-2xs text-amber-800 font-bold">🔒 Terkunci dari Riwayat Pendaftaran</span>
+                      {kartuPegawaiUrl && (
+                        <a
+                          href={kartuPegawaiUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[#005621] hover:underline font-bold"
+                        >
+                          Lihat Berkas ↗
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleFileUpload('pegawai', f);
+                        }}
+                        className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#005621] file:text-white cursor-pointer"
+                      />
+                      {uploadingField === 'pegawai' && (
+                        <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                          <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Mengunggah Kartu Pegawai…
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -527,45 +725,57 @@ export default function OnboardingClient({
                     </span>
                   )}
                 </div>
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleFileUpload('kk', f);
-                  }}
-                  className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#005621] file:text-white cursor-pointer"
-                />
-                {uploadingField === 'kk' && (
-                  <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                    <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Mengunggah KK…
-                  </p>
+                {hasSubmissions ? (
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-2xs text-amber-800 font-bold">🔒 Terkunci dari Riwayat Pendaftaran</span>
+                    {kkUrl && (
+                      <a
+                        href={kkUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[#005621] hover:underline font-bold"
+                      >
+                        Lihat Berkas ↗
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleFileUpload('kk', f);
+                      }}
+                      className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#005621] file:text-white cursor-pointer"
+                    />
+                    {uploadingField === 'kk' && (
+                      <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                        <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Mengunggah KK…
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           </div>
 
           {/* Submit Action */}
-          <div className="pt-4 flex items-center justify-end gap-3 border-t border-gray-100">
-            <Link
-              href="/"
-              className="px-5 py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              Isi Nanti
-            </Link>
+          <div className="pt-4 flex items-center justify-end border-t border-gray-100">
             <button
               type="submit"
-              disabled={submitting || !!uploadingField}
-              className="px-7 py-2.5 rounded-xl bg-[#005621] hover:bg-[#004219] text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              disabled={submitting || (!hasSubmissions && !!uploadingField)}
+              className="px-8 py-3 rounded-xl bg-[#005621] hover:bg-[#004219] text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
             >
               {submitting ? (
                 <>
                   <FontAwesomeIcon icon={faSpinner} className="animate-spin" />
-                  <span>Menyimpan…</span>
+                  <span>{hasSubmissions ? 'Menyimpan Perubahan…' : 'Memverifikasi Berkas & Menyimpan…'}</span>
                 </>
               ) : (
                 <>
-                  <span>Simpan Single Identity & Lanjutkan</span>
+                  <span>{hasSubmissions ? 'Simpan Perubahan Kontak' : 'Simpan & Lanjutkan'}</span>
                   <FontAwesomeIcon icon={faArrowRight} />
                 </>
               )}

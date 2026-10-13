@@ -17,6 +17,7 @@ import {
   faEdit,
   faEnvelope,
   faUserCheck,
+  faLock,
 } from '@fortawesome/free-solid-svg-icons';
 
 interface DocumentField {
@@ -192,7 +193,42 @@ export default function FormPendaftaranClient({
     });
   };
 
+  // Helper mendeteksi apakah suatu field biodata sudah terisi dari profil biodata / sesi akun
+  const isFieldFromBiodata = (fieldKey: string): boolean => {
+    if (!userProfile && !userSession) return false;
+    const k = fieldKey.toLowerCase();
+    if (k.includes('email') && Boolean(userSession?.email)) return true;
+    if (
+      (k === 'nama' || k.includes('nama_lengkap') || k.includes('nama_mahasiswa') || k === 'name') &&
+      Boolean(userProfile?.namaLengkap || userSession?.name)
+    ) {
+      return true;
+    }
+    if ((k === 'nik' || k.includes('ktp')) && Boolean(userProfile?.nik)) return true;
+    if (
+      (k.includes('wa') || k.includes('hp') || k.includes('telp') || k.includes('kontak')) &&
+      Boolean(userProfile?.noWa)
+    ) {
+      return true;
+    }
+    if (
+      (k === 'npm' || k === 'nim' || k.includes('mahasiswa') || k.includes('npm')) &&
+      Boolean(userProfile?.npm)
+    ) {
+      return true;
+    }
+    if (k.includes('fakultas') && Boolean(userProfile?.fakultas)) return true;
+    if ((k.includes('prodi') || k.includes('jurusan')) && Boolean(userProfile?.prodi)) return true;
+    if (k === 'nip' && Boolean(userProfile?.nip)) return true;
+    if ((k.includes('unit') || k.includes('instansi')) && Boolean(userProfile?.unitKerja)) return true;
+    if ((k.includes('alamat') || k.includes('domisili')) && Boolean(userProfile?.alamat)) return true;
+    if (k.includes('pekerjaan') && Boolean(userProfile?.pekerjaan)) return true;
+    return false;
+  };
+
   const handleBiodataChange = (key: string, value: string) => {
+    // Jika data berasal dari profil biodata, kunci dan jangan izinkan perubahan di form pendaftaran
+    if (isFieldFromBiodata(key)) return;
     setBiodataValues((prev) => ({ ...prev, [key]: value }));
     if (fieldErrors[`biodata_${key}`]) {
       setFieldErrors((prev) => {
@@ -549,7 +585,7 @@ export default function FormPendaftaranClient({
                   </span>
                 </div>
                 <p className="text-emerald-800 text-[11px] font-normal">
-                  ✓ Biodata &amp; berkas Single Identity terlampir otomatis. Anda hanya perlu melengkapi isian dinamis program ini (seperti IPK/semester).
+                  ✓ Biodata &amp; berkas identitas terlampir otomatis. Anda hanya perlu melengkapi isian persyaratan program ini (seperti IPK/semester).
                 </p>
               </div>
             </div>
@@ -557,7 +593,7 @@ export default function FormPendaftaranClient({
               href="/akun/onboarding"
               className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-emerald-100 text-[#005621] border border-emerald-200 font-bold text-2xs transition-colors shrink-0 shadow-2xs"
             >
-              Kelola Single Identity
+              Kelola Biodata
             </Link>
           </div>
         ) : (
@@ -571,7 +607,7 @@ export default function FormPendaftaranClient({
                   Daftar Lebih Cepat dengan Akun Rumah Amal USK
                 </p>
                 <p className="text-blue-800 text-[11px] font-normal">
-                  Masuk akun untuk melampirkan berkas KTP/KTM dan biodata Single Identity Anda secara otomatis tanpa repot upload ulang.
+                  Masuk akun untuk melampirkan berkas KTP/KTM dan biodata Anda secara otomatis tanpa repot upload ulang.
                 </p>
               </div>
             </div>
@@ -638,6 +674,7 @@ export default function FormPendaftaranClient({
                   const placeholder = isEmail
                     ? 'Contoh: nama@gmail.com atau nama@mhs.usk.ac.id'
                     : `Masukkan ${field.label.toLowerCase()}...`;
+                  const isLockedFromBiodata = isFieldFromBiodata(field.key);
 
                   return (
                     <div
@@ -651,6 +688,12 @@ export default function FormPendaftaranClient({
                         ) : (
                           <span className="text-gray-400 font-normal ml-1">(Opsional)</span>
                         )}
+                        {isLockedFromBiodata && (
+                          <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                            <FontAwesomeIcon icon={faLock} className="text-3xs" />
+                            <span>Terisi dari Biodata</span>
+                          </span>
+                        )}
                       </label>
 
                       {/* Tipe Text / Email / Number / Date */}
@@ -658,10 +701,16 @@ export default function FormPendaftaranClient({
                         <input
                           type={inputType}
                           value={value}
+                          readOnly={isLockedFromBiodata}
+                          disabled={isLockedFromBiodata}
                           onChange={(e) => handleBiodataChange(field.key, e.target.value)}
                           placeholder={placeholder}
-                          className={`w-full px-3.5 py-2.5 bg-gray-50/50 hover:bg-white focus:bg-white border rounded-xl text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[#005621]/15 focus:border-[#005621] ${
-                            error ? 'border-rose-300 ring-1 ring-rose-300 bg-rose-50/20' : 'border-gray-200'
+                          className={`w-full px-3.5 py-2.5 border rounded-xl text-xs font-medium transition-all focus:outline-none ${
+                            isLockedFromBiodata
+                              ? 'bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none'
+                              : error
+                              ? 'border-rose-300 ring-1 ring-rose-300 bg-rose-50/20'
+                              : 'border-gray-200 bg-gray-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-[#005621]/15 focus:border-[#005621]'
                           }`}
                         />
                       )}
@@ -671,10 +720,16 @@ export default function FormPendaftaranClient({
                         <textarea
                           rows={3}
                           value={value}
+                          readOnly={isLockedFromBiodata}
+                          disabled={isLockedFromBiodata}
                           onChange={(e) => handleBiodataChange(field.key, e.target.value)}
                           placeholder={`Tuliskan ${field.label.toLowerCase()} secara lengkap...`}
-                          className={`w-full px-3.5 py-2.5 bg-gray-50/50 hover:bg-white focus:bg-white border rounded-xl text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[#005621]/15 focus:border-[#005621] ${
-                            error ? 'border-rose-300 ring-1 ring-rose-300 bg-rose-50/20' : 'border-gray-200'
+                          className={`w-full px-3.5 py-2.5 border rounded-xl text-xs font-medium transition-all focus:outline-none ${
+                            isLockedFromBiodata
+                              ? 'bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none'
+                              : error
+                              ? 'border-rose-300 ring-1 ring-rose-300 bg-rose-50/20'
+                              : 'border-gray-200 bg-gray-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-[#005621]/15 focus:border-[#005621]'
                           }`}
                         />
                       )}
@@ -683,9 +738,14 @@ export default function FormPendaftaranClient({
                       {field.tipe === 'select' && (
                         <select
                           value={value}
+                          disabled={isLockedFromBiodata}
                           onChange={(e) => handleBiodataChange(field.key, e.target.value)}
-                          className={`w-full px-3.5 py-2.5 bg-gray-50/50 hover:bg-white focus:bg-white border rounded-xl text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[#005621]/15 focus:border-[#005621] cursor-pointer ${
-                            error ? 'border-rose-300 ring-1 ring-rose-300 bg-rose-50/20' : 'border-gray-200'
+                          className={`w-full px-3.5 py-2.5 border rounded-xl text-xs font-medium transition-all focus:outline-none ${
+                            isLockedFromBiodata
+                              ? 'bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none'
+                              : error
+                              ? 'border-rose-300 ring-1 ring-rose-300 bg-rose-50/20 cursor-pointer'
+                              : 'border-gray-200 bg-gray-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-[#005621]/15 focus:border-[#005621] cursor-pointer'
                           }`}
                         >
                           <option value="">-- Pilih salah satu --</option>
@@ -703,10 +763,12 @@ export default function FormPendaftaranClient({
                           {field.options.map((opt) => (
                             <label
                               key={opt}
-                              className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium cursor-pointer transition-all ${
-                                value === opt
-                                  ? 'border-[#005621] bg-emerald-50/40 text-[#005621] font-bold'
-                                  : 'border-gray-200 bg-gray-50/50 hover:bg-white text-gray-700'
+                              className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
+                                isLockedFromBiodata
+                                  ? 'cursor-not-allowed opacity-80 border-gray-200 bg-gray-100 text-gray-600'
+                                  : value === opt
+                                  ? 'border-[#005621] bg-emerald-50/40 text-[#005621] font-bold cursor-pointer'
+                                  : 'border-gray-200 bg-gray-50/50 hover:bg-white text-gray-700 cursor-pointer'
                               }`}
                             >
                               <input
@@ -714,8 +776,9 @@ export default function FormPendaftaranClient({
                                 name={`radio_${field.key}`}
                                 value={opt}
                                 checked={value === opt}
+                                disabled={isLockedFromBiodata}
                                 onChange={(e) => handleBiodataChange(field.key, e.target.value)}
-                                className="text-[#005621] focus:ring-[#005621] cursor-pointer"
+                                className="text-[#005621] focus:ring-[#005621]"
                               />
                               <span>{opt}</span>
                             </label>
@@ -753,21 +816,57 @@ export default function FormPendaftaranClient({
                     </p>
                   </div>
                 </div>
-              </div>
-
-              <div className="space-y-3.5">
+              </div>              <div className="space-y-3.5">
                 {program.documentFields.map((docField) => {
                   const error = fieldErrors[`doc_${docField.key}`];
                   const file = selectedFiles[docField.key];
                   const existingUrl = getExistingProfileDocUrl(docField);
 
+                  // Jika berkas SUDAH TERSEDIA dari biodata: TIDAK USAH TAMPILKAN LAGI FIELD INPUTNYA
+                  if (existingUrl) {
+                    return (
+                      <div
+                        key={docField.id}
+                        className="p-4 sm:p-4.5 rounded-xl border border-emerald-200 bg-emerald-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                      >
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-gray-800 leading-snug">
+                              {docField.label}
+                            </span>
+                            <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 inline-flex items-center gap-1">
+                              <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-3xs" />
+                              <span>Terlampir Otomatis dari Biodata</span>
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500 font-normal">
+                            Berkas telah tersedia dari profil biodata akun Anda dan otomatis dilampirkan pada pendaftaran ini. Anda tidak perlu mengunggah ulang berkas ini.
+                          </p>
+                        </div>
+
+                        <div className="shrink-0">
+                          <a
+                            href={existingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-100 text-[#005621] border border-emerald-200 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                          >
+                            <span>Lihat Berkas</span>
+                            <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Jika berkas belum ada di biodata (syarat khusus program): Tampilkan input unggah berkas
                   return (
                     <div
                       key={docField.id}
                       className={`p-4 sm:p-5 rounded-xl border transition-all ${
                         error
                           ? 'border-rose-300 bg-rose-50/30'
-                          : file || existingUrl
+                          : file
                           ? 'border-emerald-300 bg-emerald-50/20'
                           : 'border-gray-200 bg-gray-50/40 hover:bg-white hover:border-gray-300'
                       }`}
@@ -784,14 +883,8 @@ export default function FormPendaftaranClient({
                             )}
                           </label>
 
-                          {/* Chips Petunjuk Khusus & Single Identity Badge */}
+                          {/* Chips Petunjuk Khusus */}
                           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                            {existingUrl && !file && (
-                              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300 inline-flex items-center gap-1">
-                                <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-3xs" />
-                                <span>Terlampir Otomatis dari Single Identity Akun</span>
-                              </span>
-                            )}
                             {docField.maxAgeMonths && (
                               <span className="text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                                 Berlaku maks {docField.maxAgeMonths} bulan
@@ -819,43 +912,6 @@ export default function FormPendaftaranClient({
                                 className="ml-2 px-2.5 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 text-[11px] font-bold border border-gray-200 cursor-pointer transition-colors shrink-0"
                               >
                                 <span>Ganti</span>
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png"
-                                  onChange={(e) =>
-                                    handleFileChange(docField.key, e.target.files?.[0] || null)
-                                  }
-                                  className="hidden"
-                                />
-                              </label>
-                              {existingUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleFileChange(docField.key, null)}
-                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200 cursor-pointer transition-colors"
-                                  title="Batalkan file pilihan dan gunakan kembali berkas profil akun"
-                                >
-                                  Gunakan Berkas Akun
-                                </button>
-                              )}
-                            </div>
-                          ) : existingUrl ? (
-                            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-emerald-300 shadow-2xs">
-                              <FontAwesomeIcon icon={faCheckCircle} className="text-emerald-600 text-sm shrink-0" />
-                              <a
-                                href={existingUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs font-bold text-[#005621] hover:underline inline-flex items-center gap-1"
-                              >
-                                <span>Lihat Berkas Akun</span>
-                                <FontAwesomeIcon icon={faExternalLinkAlt} className="text-3xs" />
-                              </a>
-                              <label
-                                title="Unggah berkas pengganti khusus pendaftaran ini"
-                                className="ml-2 px-2.5 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 text-[11px] font-bold border border-gray-200 cursor-pointer transition-colors"
-                              >
-                                <span>Ganti File</span>
                                 <input
                                   type="file"
                                   accept=".pdf,.jpg,.jpeg,.png"
@@ -895,7 +951,6 @@ export default function FormPendaftaranClient({
                     </div>
                   );
                 })}
-
               </div>
             </div>
           )}

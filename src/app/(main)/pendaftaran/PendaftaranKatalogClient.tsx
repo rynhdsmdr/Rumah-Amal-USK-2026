@@ -48,7 +48,6 @@ export default function PendaftaranKatalogClient({
 }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [checkToken, setCheckToken] = useState('');
   const [tabFilter, setTabFilter] = useState<'khusus' | 'semua'>(
     userSession?.kelompok ? 'khusus' : 'semua'
   );
@@ -127,9 +126,9 @@ export default function PendaftaranKatalogClient({
               1
             </div>
             <div>
-              <h3 className="font-bold text-gray-900 text-sm mb-1">Pilih Program & Siapkan Berkas</h3>
+              <h3 className="font-bold text-gray-900 text-sm mb-1">Masuk Akun Pendaftar</h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Pilih program yang sesuai kriteria Anda dan unduh template dokumen resmi yang disediakan.
+                Masuk menggunakan email Google kampus USK (khusus mahasiswa/dosen) atau email terdaftar untuk mengakses pendaftaran program.
               </p>
             </div>
           </div>
@@ -139,9 +138,9 @@ export default function PendaftaranKatalogClient({
               2
             </div>
             <div>
-              <h3 className="font-bold text-gray-900 text-sm mb-1">Isi Formulir & Unggah Berkas</h3>
+              <h3 className="font-bold text-gray-900 text-sm mb-1">Lengkapi Profil Biodata</h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Lengkapi data diri serta unggah berkas yang diminta secara rapi dan jelas.
+                Cukup isi data biodata dan unggah berkas permanen (KTP, KTM, KK) satu kali saja yang akan terhubung ke semua program.
               </p>
             </div>
           </div>
@@ -151,51 +150,15 @@ export default function PendaftaranKatalogClient({
               3
             </div>
             <div>
-              <h3 className="font-bold text-gray-900 text-sm mb-1">Konfirmasi Email &amp; Akses Formulir</h3>
+              <h3 className="font-bold text-gray-900 text-sm mb-1">Pilih Program &amp; Pantau Seleksi</h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Tautan bukti pendaftaran dan akses perbaikan berkas otomatis dikirimkan ke alamat email aktif Anda.
+                Ajukan pendaftaran program yang dibuka dan pantau perkembangan verifikasi serta hasil seleksi di Dashboard Akun.
               </p>
             </div>
           </div>
         </div>
 
-        {/* CEK & PERBAIKI PENDAFTARAN */}
-        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#005621]" />
-              <span>Sudah Pernah Mendaftar?</span>
-            </h3>
-            <p className="text-xs text-gray-500 font-normal">
-              Periksa email Anda untuk membuka tautan formulir secara langsung, atau masukkan token pendaftaran jika Anda menyimpannya.
-            </p>
-          </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (checkToken.trim()) {
-                router.push(`/perbaiki/${checkToken.trim()}`);
-              }
-            }}
-            className="flex items-center gap-2 w-full md:w-auto"
-          >
-            <input
-              type="text"
-              placeholder="Masukkan Token Pendaftaran..."
-              value={checkToken}
-              onChange={(e) => setCheckToken(e.target.value)}
-              className="flex-1 md:w-72 px-3.5 py-2.5 bg-gray-50/70 hover:bg-white focus:bg-white border border-gray-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#005621]/15 focus:border-[#005621] transition-all"
-            />
-            <button
-              type="submit"
-              disabled={!checkToken.trim()}
-              className="px-5 py-2.5 bg-[#005621] hover:bg-[#004218] text-white font-bold text-xs rounded-xl shadow-2xs transition-all disabled:opacity-40 cursor-pointer shrink-0"
-            >
-              Cek / Perbaiki
-            </button>
-          </form>
-        </div>
 
         {/* BANNER STATUS AKUN PENDAFTAR */}
         {userSession ? (
@@ -233,14 +196,14 @@ export default function PendaftaranKatalogClient({
                   href="/akun/onboarding"
                   className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-gray-900 text-xs font-black rounded-xl shadow-xs transition-colors"
                 >
-                  ⚡ Lengkapi Single Identity
+                  ⚡ Lengkapi Biodata
                 </Link>
               ) : (
                 <Link
                   href="/akun/onboarding"
                   className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-colors"
                 >
-                  Profil Single Identity
+                  Profil &amp; Biodata
                 </Link>
               )}
             </div>
@@ -253,7 +216,7 @@ export default function PendaftaranKatalogClient({
                 <span>Masuk dengan Akun Pendaftar Rumah Amal</span>
               </h3>
               <p className="text-xs text-gray-600 max-w-xl">
-                Gunakan email kampus USK (@mhs.usk.ac.id / @usk.ac.id) atau akun Google pribadi untuk kemudahan berkas Single Identity otomatis &amp; cek status seleksi.
+                Gunakan email kampus USK (@mhs.usk.ac.id / @usk.ac.id) atau akun Google pribadi untuk kemudahan biodata otomatis &amp; cek status seleksi.
               </p>
             </div>
             <Link

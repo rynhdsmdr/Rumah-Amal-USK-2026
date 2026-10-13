@@ -2,6 +2,7 @@ import { distance } from 'fastest-levenshtein';
 import { PDFDocument } from 'pdf-lib';
 import { createWorker } from 'tesseract.js';
 import path from 'path';
+import fs from 'fs';
 
 export interface VerificationWarning {
   fieldKey: string;
@@ -358,4 +359,281 @@ export async function mergeDocumentsToSinglePdf(
 
   const mergedBytes = await mergedPdf.save();
   return Buffer.from(mergedBytes);
+}
+
+/**
+ * 6. Pengecekan Kesesuaian NIK (Nomor Induk Kependudukan 16 Digit)
+ */
+export function checkNikMatch(
+  ocrText: string,
+  targetNik: string
+): { matches: boolean; foundNik?: string; similarityScore: number; reason: string } {
+  const cleanTarget = (targetNik || '').trim().replace(/[^0-9]/g, '');
+  if (cleanTarget.length !== 16) {
+    return {
+      matches: false,
+      similarityScore: 0,
+      reason: 'NIK harus berupa 16 digit angka.',
+    };
+  }
+
+  // 1. Cek langsung jika 16 digit target muncul persis di OCR
+  if (ocrText.includes(cleanTarget)) {
+    return {
+      matches: true,
+      foundNik: cleanTarget,
+      similarityScore: 1.0,
+      reason: 'NIK cocok sempurna pada dokumen KTP.',
+    };
+  }
+
+  // 2. Normalisasi karakter OCR yang sering tertukar dengan angka
+  const normalizedDigits = ocrText
+    .replace(/[OoD]/g, '0')
+    .replace(/[Il|]/g, '1')
+    .replace(/[Zz]/g, '2')
+    .replace(/[Ss]/g, '5')
+    .replace(/[bB]/g, '8')
+    .replace(/[gq]/g, '9');
+
+  if (normalizedDigits.includes(cleanTarget)) {
+    return {
+      matches: true,
+      foundNik: cleanTarget,
+      similarityScore: 0.95,
+      reason: 'NIK terverifikasi cocok pada dokumen KTP.',
+    };
+  }
+
+  // 3. Ekstrak deretan angka 14-18 digit di dalam dokumen
+  const digitSequences = normalizedDigits.match(/\b\d{14,18}\b/g) || [];
+  let bestFound = '';
+  let bestRatio = 0;
+
+  for (const seq of digitSequences) {
+    const dist = distance(cleanTarget, seq);
+    const maxL = Math.max(cleanTarget.length, seq.length);
+    const ratio = maxL > 0 ? (maxL - dist) / maxL : 0;
+    if (ratio > bestRatio) {
+      bestRatio = ratio;
+      bestFound = seq;
+    }
+  }
+
+  // Jika kemiripan >= 80% (toleransi salah baca 1-2 digit karena noise foto)
+  if (bestRatio >= 0.8) {
+    return {
+      matches: true,
+      foundNik: bestFound,
+      similarityScore: Math.round(bestRatio * 100) / 100,
+      reason: `NIK terverifikasi cocok (${Math.round(bestRatio * 100)}% kesamaan).`,
+    };
+  }
+
+  // Jika terdeteksi deretan 16 digit lain tapi kemiripan sangat rendah (< 65%)
+  if (digitSequences.length > 0 && bestRatio < 0.65) {
+    return {
+      matches: false,
+      foundNik: bestFound,
+      similarityScore: Math.round(bestRatio * 100) / 100,
+      reason: `NIK pada dokumen KTP terdeteksi berbeda (${bestFound}) dengan NIK input (${cleanTarget}).`,
+    };
+  }
+
+  return {
+    matches: false,
+    similarityScore: Math.round(bestRatio * 100) / 100,
+    reason: 'Nomor NIK tidak dapat terdeteksi dengan jelas pada foto KTP.',
+  };
+}
+
+/**
+ * 7. Pengecekan Kesesuaian NPM Mahasiswa USK
+ */
+export function checkNpmMatch(
+  ocrText: string,
+  targetNpm: string
+): { matches: boolean; foundNpm?: string; similarityScore: number; reason: string } {
+  const cleanTarget = (targetNpm || '').trim().replace(/[^0-9]/g, '');
+  if (!cleanTarget || cleanTarget.length < 5) {
+    return {
+      matches: false,
+      similarityScore: 0,
+      reason: 'NPM mahasiswa tidak valid.',
+    };
+  }
+
+  if (ocrText.includes(cleanTarget)) {
+    return {
+      matches: true,
+      foundNpm: cleanTarget,
+      similarityScore: 1.0,
+      reason: 'NPM cocok sempurna pada dokumen KTM.',
+    };
+  }
+
+  const normalizedDigits = ocrText
+    .replace(/[OoD]/g, '0')
+    .replace(/[Il|]/g, '1')
+    .replace(/[Zz]/g, '2')
+    .replace(/[Ss]/g, '5')
+    .replace(/[bB]/g, '8')
+    .replace(/[gq]/g, '9');
+
+  if (normalizedDigits.includes(cleanTarget)) {
+    return {
+      matches: true,
+      foundNpm: cleanTarget,
+      similarityScore: 0.95,
+      reason: 'NPM terverifikasi cocok pada dokumen KTM.',
+    };
+  }
+
+  const digitSequences = normalizedDigits.match(/\b\d{8,16}\b/g) || [];
+  let bestFound = '';
+  let bestRatio = 0;
+
+  for (const seq of digitSequences) {
+    const dist = distance(cleanTarget, seq);
+    const maxL = Math.max(cleanTarget.length, seq.length);
+    const ratio = maxL > 0 ? (maxL - dist) / maxL : 0;
+    if (ratio > bestRatio) {
+      bestRatio = ratio;
+      bestFound = seq;
+    }
+  }
+
+  if (bestRatio >= 0.8) {
+    return {
+      matches: true,
+      foundNpm: bestFound,
+      similarityScore: Math.round(bestRatio * 100) / 100,
+      reason: `NPM terverifikasi cocok (${Math.round(bestRatio * 100)}% kesamaan).`,
+    };
+  }
+
+  if (digitSequences.length > 0 && bestRatio < 0.65) {
+    return {
+      matches: false,
+      foundNpm: bestFound,
+      similarityScore: Math.round(bestRatio * 100) / 100,
+      reason: `NPM pada KTM terdeteksi berbeda (${bestFound}) dengan NPM input (${cleanTarget}).`,
+    };
+  }
+
+  return {
+    matches: false,
+    similarityScore: Math.round(bestRatio * 100) / 100,
+    reason: 'Nomor NPM tidak dapat terdeteksi dengan jelas pada foto KTM.',
+  };
+}
+
+/**
+ * 8. Download Buffer Berkas untuk Verifikasi
+ */
+export async function fetchFileBuffer(fileUrl: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  if (!fileUrl) return null;
+  try {
+    if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+      const res = await fetch(fileUrl);
+      if (!res.ok) return null;
+      const arrayBuffer = await res.arrayBuffer();
+      const mimeType = res.headers.get('content-type') || 'application/octet-stream';
+      return { buffer: Buffer.from(arrayBuffer), mimeType };
+    }
+    if (fileUrl.startsWith('/uploads/')) {
+      const localPath = path.join(process.cwd(), 'public', fileUrl);
+      if (fs.existsSync(localPath)) {
+        return { buffer: fs.readFileSync(localPath), mimeType: 'image/jpeg' };
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error('[fetchFileBuffer error]', err);
+    return null;
+  }
+}
+
+/**
+ * 9. Pengecekan Automasi Kesesuaian Biodata & Berkas (KTP, KTM)
+ */
+export async function verifyProfileIdentityDocuments(params: {
+  namaLengkap: string;
+  nik: string;
+  npm?: string;
+  kelompok: string;
+  ktpUrl?: string;
+  ktmUrl?: string;
+}): Promise<{
+  isValid: boolean;
+  error?: string;
+  ktpMatch?: { nikMatches: boolean; nameMatches: boolean };
+  ktmMatch?: { npmMatches: boolean; nameMatches: boolean };
+}> {
+  const { namaLengkap, nik, npm, kelompok, ktpUrl, ktmUrl } = params;
+
+  // 1. Validasi Berkas KTP
+  if (ktpUrl) {
+    const ktpFile = await fetchFileBuffer(ktpUrl);
+    if (ktpFile && (ktpFile.mimeType.startsWith('image/') || ktpUrl.match(/\.(jpg|jpeg|png|webp)$/i))) {
+      const ocrKtp = await runOcrOnBuffer(ktpFile.buffer, ktpFile.mimeType);
+
+      // Hanya evaluasi jika OCR berhasil mengekstrak teks bermakna
+      if (ocrKtp && ocrKtp.trim().length > 25) {
+        // Cek NIK
+        const nikCheck = checkNikMatch(ocrKtp, nik);
+        // Cek Nama
+        const nameCheck = checkApplicantNameMatch(ocrKtp, namaLengkap);
+
+        // Jika terdeteksi NIK orang lain (berbeda jelas dan kemiripan rendah)
+        if (nikCheck.foundNik && !nikCheck.matches && nikCheck.similarityScore < 0.65) {
+          return {
+            isValid: false,
+            error: `Data NIK yang Anda masukkan (${nik}) tidak sesuai dengan dokumen KTP yang diunggah (terdeteksi ${nikCheck.foundNik}). Harap unggah KTP resmi atas nama Anda sendiri.`,
+            ktpMatch: { nikMatches: false, nameMatches: nameCheck.matches },
+          };
+        }
+
+        // Jika nama di KTP terdeteksi jelas orang lain (misal nama KTP tidak cocok sama sekali)
+        if (!nameCheck.matches && nameCheck.similarityScore < 0.35) {
+          return {
+            isValid: false,
+            error: `Nama Lengkap "${namaLengkap}" tidak sesuai dengan identitas yang terbaca pada dokumen KTP yang diunggah. Harap gunakan KTP asli milik Anda sendiri.`,
+            ktpMatch: { nikMatches: nikCheck.matches, nameMatches: false },
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Validasi Berkas KTM (Khusus Kelompok Mahasiswa USK)
+  if (kelompok === 'MAHASISWA_USK' && ktmUrl && npm) {
+    const ktmFile = await fetchFileBuffer(ktmUrl);
+    if (ktmFile && (ktmFile.mimeType.startsWith('image/') || ktmUrl.match(/\.(jpg|jpeg|png|webp)$/i))) {
+      const ocrKtm = await runOcrOnBuffer(ktmFile.buffer, ktmFile.mimeType);
+
+      if (ocrKtm && ocrKtm.trim().length > 20) {
+        const npmCheck = checkNpmMatch(ocrKtm, npm);
+        const nameCheck = checkApplicantNameMatch(ocrKtm, namaLengkap);
+
+        if (npmCheck.foundNpm && !npmCheck.matches && npmCheck.similarityScore < 0.65) {
+          return {
+            isValid: false,
+            error: `NPM yang Anda masukkan (${npm}) tidak sesuai dengan nomor mahasiswa pada kartu KTM yang diunggah (terdeteksi ${npmCheck.foundNpm}). Harap periksa kembali berkas KTM Anda.`,
+            ktmMatch: { npmMatches: false, nameMatches: nameCheck.matches },
+          };
+        }
+
+        if (!nameCheck.matches && nameCheck.similarityScore < 0.35) {
+          return {
+            isValid: false,
+            error: `Nama Mahasiswa "${namaLengkap}" tidak sesuai dengan nama pada kartu KTM yang diunggah. Harap unggah KTM resmi milik Anda sendiri.`,
+            ktmMatch: { npmMatches: npmCheck.matches, nameMatches: false },
+          };
+        }
+      }
+    }
+  }
+
+  return { isValid: true };
 }

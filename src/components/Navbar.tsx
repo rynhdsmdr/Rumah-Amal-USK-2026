@@ -96,8 +96,15 @@ export default function Navbar() {
     kelompok: string | null;
   } | null>(null);
 
+  const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const langDropdownRef = useRef<HTMLDivElement>(null);
+  const accountDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setAccountDropdownOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -145,6 +152,19 @@ export default function Navbar() {
     window.location.reload();
   };
 
+  const handleLogoutNavbar = async () => {
+    if (!confirm("Apakah Anda ingin keluar dari akun pendaftar?")) return;
+    try {
+      await fetch('/api/auth/me', { method: 'POST' });
+      const { supabaseBrowser } = await import('@/lib/supabase-browser');
+      await supabaseBrowser.auth.signOut();
+    } catch (e) {
+      console.error(e);
+    }
+    setCurrentUser(null);
+    window.location.href = '/masuk';
+  };
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -152,6 +172,9 @@ export default function Navbar() {
       }
       if (langDropdownRef.current && !langDropdownRef.current.contains(event.target as Node)) {
         setLangDropdownOpen(false);
+      }
+      if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target as Node)) {
+        setAccountDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -368,16 +391,91 @@ export default function Navbar() {
               {t.BayarZakat}
             </Link>
 
-            {/* Tombol Akun / Masuk Pendaftar */}
+            {/* Tombol Akun / Masuk Pendaftar (Dropdown) */}
             {currentUser ? (
-              <Link
-                href="/akun"
-                className="hidden lg:inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#005621] border border-emerald-300 font-bold text-[10px] xl:text-[12px] px-2.5 xl:px-3 py-1.5 rounded-lg transition-all duration-200 shadow-2xs whitespace-nowrap shrink-0"
-                title={`Masuk sebagai: ${currentUser.name || currentUser.email}`}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>{currentUser.name ? currentUser.name.split(' ')[0] : t.Akun}</span>
-              </Link>
+              <div className="hidden lg:relative lg:block shrink-0" ref={accountDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setAccountDropdownOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#005621] border border-emerald-300 font-bold text-[10px] xl:text-[12px] px-2.5 xl:px-3 py-1.5 rounded-lg transition-all duration-200 shadow-2xs whitespace-nowrap cursor-pointer"
+                  aria-expanded={accountDropdownOpen}
+                  title={`Akun: ${currentUser.email}`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="max-w-[120px] truncate">
+                    {currentUser.name ? currentUser.name.split(' ')[0] : currentUser.email.split('@')[0]}
+                  </span>
+                  <svg
+                    className={`w-3 h-3 text-emerald-700 transition-transform duration-200 ${
+                      accountDropdownOpen ? "rotate-180" : ""
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Dropdown Menu */}
+                {accountDropdownOpen && (
+                  <div
+                    className={`absolute top-full mt-1.5 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150 ${
+                      currentLang === 'ar' ? 'left-0' : 'right-0'
+                    }`}
+                  >
+                    {/* User info preview */}
+                    <div className="px-3.5 py-2 border-b border-gray-100 bg-gray-50/60 rounded-t-lg">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        Akun Pendaftar
+                      </p>
+                      <p className="text-xs font-bold text-gray-800 truncate" title={currentUser.email}>
+                        {currentUser.email}
+                      </p>
+                    </div>
+
+                    <div className="py-1">
+                      <Link
+                        href="/akun"
+                        onClick={() => setAccountDropdownOpen(false)}
+                        className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-gray-700 hover:bg-emerald-50 hover:text-[#005621] transition-colors"
+                      >
+                        <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span>Dashboard Akun</span>
+                      </Link>
+
+                      <Link
+                        href="/akun/onboarding"
+                        onClick={() => setAccountDropdownOpen(false)}
+                        className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-gray-700 hover:bg-emerald-50 hover:text-[#005621] transition-colors"
+                      >
+                        <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        <span>Lengkapi / Ubah Profil</span>
+                      </Link>
+                    </div>
+
+                    <div className="border-t border-gray-100 pt-1 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountDropdownOpen(false);
+                          handleLogoutNavbar();
+                        }}
+                        className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer text-left"
+                      >
+                        <svg className="w-4 h-4 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        <span>Keluar dari Akun</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <Link
                 href="/masuk"
@@ -580,13 +678,25 @@ export default function Navbar() {
 
               {/* Tombol Akun / Masuk Mobile */}
               {currentUser ? (
-                <Link
-                  href="/akun"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="bg-emerald-50 text-[#005621] border border-emerald-300 font-bold text-[15px] text-center px-5 py-3 rounded-xl shadow-2xs transition-all block mt-2"
-                >
-                  Profil &amp; Single Identity ({currentUser.name ? currentUser.name.split(' ')[0] : 'Saya'})
-                </Link>
+                <div className="flex flex-col gap-2 mt-2">
+                  <Link
+                    href="/akun"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="bg-emerald-50 text-[#005621] border border-emerald-300 font-bold text-[15px] text-center px-5 py-3 rounded-xl shadow-2xs transition-all block"
+                  >
+                    Profil &amp; Biodata ({currentUser.name ? currentUser.name.split(' ')[0] : 'Saya'})
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      handleLogoutNavbar();
+                    }}
+                    className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[14px] text-center px-5 py-2.5 rounded-xl transition-all block cursor-pointer"
+                  >
+                    Keluar dari Akun
+                  </button>
+                </div>
               ) : (
                 <Link
                   href="/masuk"
