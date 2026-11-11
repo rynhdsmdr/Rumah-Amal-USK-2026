@@ -37,6 +37,7 @@ const menuGroups = [
     label: 'Layanan & Beasiswa',
     items: [
       { href: '/admin/pendaftaran', label: 'Pendaftaran Program', icon: faGraduationCap },
+      { href: '/admin/pintas', label: 'Program PINTAS', icon: faHandHoldingHeart },
     ],
   },
   {

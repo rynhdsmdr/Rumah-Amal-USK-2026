@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { Doughnut, Line } from 'react-chartjs-2';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faHandHoldingHeart } from '@fortawesome/free-solid-svg-icons';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -21,12 +24,77 @@ interface PintasData {
   infaqMasuk: number;
   tersalurkan: number;
   dicadangkan: number;
+  pengajuanDisetujui?: number;
+  pengajuanProses?: number;
   definisi: string | null;
   syaratAdmin: string | null;
   alurPendaftaran: string | null;
   linkDownload: string | null;
+  linkDownloadMahasiswa?: string | null;
+  linkDownloadDosenStaff?: string | null;
+  linkGformMahasiswa?: string | null;
+  linkGformDosenStaff?: string | null;
   linkInformasi: string | null;
+  noWaAdmin?: string | null;
   updatedAt: string;
+}
+
+interface SetoranRecord {
+  id: string;
+  borrowerId: string;
+  nominal: number;
+  tanggalSetor: string;
+  metode: string;
+  bankPengirim?: string;
+  nomorRekeningPengirim?: string;
+  namaPengirim?: string;
+  buktiTransferUrl: string | null;
+  buktiFileName?: string;
+  buktiPurged: boolean;
+  purgedAt?: string | null;
+  catatan?: string | null;
+  status: 'TERVERIFIKASI' | 'MENUNGGU_VERIFIKASI' | 'DITOLAK';
+  verifiedAt?: string | null;
+  rejectionReason?: string | null;
+}
+
+interface BorrowerRecord {
+  id: string;
+  identifier: string;
+  nama: string;
+  peran: string;
+  unitFakultas: string;
+  noWa: string;
+  email: string;
+  totalPinjaman: number;
+  tanggalPencairan: string;
+  status: 'BELUM_LUNAS' | 'LUNAS';
+  lunasAt?: string | null;
+  lastReminderSentAt?: string | null;
+  reminderCount: number;
+  keteranganPinjaman: string;
+  setoran: SetoranRecord[];
+  calculation: {
+    totalSetor: number;
+    totalPending: number;
+    sisaPinjaman: number;
+    isLunas: boolean;
+    retentionDaysLeft: number | null;
+    isPurged: boolean;
+  };
+}
+
+interface ReminderLogItem {
+  id: string;
+  borrowerId: string;
+  borrowerName: string;
+  identifier: string;
+  noWa: string;
+  sisaPinjaman: number;
+  bulan: string;
+  sentAt: string;
+  status: string;
+  pesan: string;
 }
 
 function formatRupiah(value: number): string {
@@ -40,6 +108,19 @@ function formatRupiahShort(value: number): string {
   return value.toString();
 }
 
+function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return '-';
+  try {
+    return new Intl.DateTimeFormat('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(new Date(dateStr));
+  } catch {
+    return dateStr;
+  }
+}
+
 export default function AdminPintasPage() {
   const [data, setData] = useState<PintasData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,17 +132,43 @@ export default function AdminPintasPage() {
   const [yearDropdownOpen, setYearDropdownOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Main Dashboard Sections Navigation
+  const [adminSection, setAdminSection] = useState<
+    'overview' | 'peminjam' | 'pengingat' | 'retensi' | 'alur_gform'
+  >('overview');
+
+  // Borrowers & Reminders state
+  const [borrowers, setBorrowers] = useState<BorrowerRecord[]>([]);
+  const [reminderLogs, setReminderLogs] = useState<ReminderLogItem[]>([]);
+  const [loadingBorrowers, setLoadingBorrowers] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMsg, setActionMsg] = useState('');
+  const [previewBuktiModal, setPreviewBuktiModal] = useState<string | null>(null);
+
   // Form states
   const [kuotaTersedia, setKuotaTersedia] = useState('249500000');
   const [infaqMasuk, setInfaqMasuk] = useState('1250000000');
   const [tersalurkan, setTersalurkan] = useState('850500000');
-  const [dicadangkan, setDicadangkan] = useState('150000000');
+  const [dicadangkan, setDicadangkan] = useState('0');
   const [pengajuanDisetujui, setPengajuanDisetujui] = useState('425');
   const [pengajuanProses, setPengajuanProses] = useState('75');
   const [definisi, setDefinisi] = useState('');
   const [syaratAdmin, setSyaratAdmin] = useState('');
   const [alurPendaftaran, setAlurPendaftaran] = useState('');
   const [linkDownload, setLinkDownload] = useState('https://bit.ly/berkaspintasRA');
+  const [linkDownloadMahasiswa, setLinkDownloadMahasiswa] = useState(
+    'https://drive.google.com/drive/folders/1rJbqX0OU4r66w4YOCWewhFU1gWlh7jFb?usp=drive_link'
+  );
+  const [linkDownloadDosenStaff, setLinkDownloadDosenStaff] = useState(
+    'https://drive.google.com/drive/folders/1PSTXp1CRhl-3Fjbf7eNCriLUd4_kHRWe?usp=drive_link'
+  );
+  const [linkGformMahasiswa, setLinkGformMahasiswa] = useState(
+    'https://docs.google.com/forms/d/e/1FAIpQLSdO4F8634R5P0wXolB_RcVDeF_8TOcCt18EmUxoc71jIXxnfQ/viewform'
+  );
+  const [linkGformDosenStaff, setLinkGformDosenStaff] = useState(
+    'https://docs.google.com/forms/d/e/1FAIpQLSdXwUWUxmBmRYp15kdQz77Net9yu33EvZZ-JggvzY6UdZttKA/viewform'
+  );
+  const [noWaAdmin, setNoWaAdmin] = useState('628116888123');
   const [linkInformasi, setLinkInformasi] = useState(
     'https://api.whatsapp.com/send/?phone=628116888123&text&type=phone_number&app_absent=0'
   );
@@ -77,11 +184,18 @@ export default function AdminPintasPage() {
         setKuotaTersedia(json.kuotaTersedia?.toString() || '249500000');
         setInfaqMasuk(json.infaqMasuk?.toString() || '1250000000');
         setTersalurkan(json.tersalurkan?.toString() || '850500000');
-        setDicadangkan(json.dicadangkan?.toString() || '150000000');
+        setDicadangkan(json.dicadangkan?.toString() || '0');
+        setPengajuanDisetujui(json.pengajuanDisetujui?.toString() || '425');
+        setPengajuanProses(json.pengajuanProses?.toString() || '75');
         setDefinisi(json.definisi || '');
         setSyaratAdmin(json.syaratAdmin || '');
         setAlurPendaftaran(json.alurPendaftaran || '');
         setLinkDownload(json.linkDownload || '');
+        setLinkDownloadMahasiswa(json.linkDownloadMahasiswa || 'https://bit.ly/berkaspintasRA-mahasiswa');
+        setLinkDownloadDosenStaff(json.linkDownloadDosenStaff || 'https://bit.ly/berkaspintasRA-dosen-staff');
+        setLinkGformMahasiswa(json.linkGformMahasiswa || 'https://bit.ly/gform-pintas-mahasiswa');
+        setLinkGformDosenStaff(json.linkGformDosenStaff || 'https://bit.ly/gform-pintas-dosen-staff');
+        setNoWaAdmin(json.noWaAdmin || '628116888123');
         setLinkInformasi(json.linkInformasi || '');
       }
     } catch (err) {
@@ -91,9 +205,30 @@ export default function AdminPintasPage() {
     }
   }, []);
 
+  const fetchBorrowers = useCallback(async () => {
+    setLoadingBorrowers(true);
+    try {
+      const res = await fetch('/api/pintas/setoran');
+      if (res.ok) {
+        const json = await res.json();
+        setBorrowers(json);
+      }
+      const remRes = await fetch('/api/pintas/reminders');
+      if (remRes.ok) {
+        const remJson = await remRes.json();
+        setReminderLogs(remJson.logs || []);
+      }
+    } catch (err) {
+      console.error('Error fetching borrowers:', err);
+    } finally {
+      setLoadingBorrowers(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchBorrowers();
+  }, [fetchData, fetchBorrowers]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -107,10 +242,17 @@ export default function AdminPintasPage() {
           infaqMasuk: Number(infaqMasuk) || 0,
           tersalurkan: Number(tersalurkan) || 0,
           dicadangkan: Number(dicadangkan) || 0,
+          pengajuanDisetujui: Number(pengajuanDisetujui) || 0,
+          pengajuanProses: Number(pengajuanProses) || 0,
           definisi,
           syaratAdmin,
           alurPendaftaran,
           linkDownload,
+          linkDownloadMahasiswa,
+          linkDownloadDosenStaff,
+          linkGformMahasiswa,
+          linkGformDosenStaff,
+          noWaAdmin,
           linkInformasi,
         }),
       });
@@ -132,15 +274,89 @@ export default function AdminPintasPage() {
     }
   };
 
+  const handleVerifySetoran = async (
+    borrowerId: string,
+    setoranId: string,
+    status: 'TERVERIFIKASI' | 'DITOLAK'
+  ) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/pintas/setoran', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          borrowerId,
+          setoranId,
+          status,
+          verifiedBy: 'Administrator',
+        }),
+      });
+      if (res.ok) {
+        setActionMsg(`✓ Setoran berhasil diubah menjadi status ${status}`);
+        fetchBorrowers();
+      } else {
+        setActionMsg('✗ Gagal memperbarui status setoran');
+      }
+    } catch {
+      setActionMsg('✗ Kesalahan jaringan');
+    } finally {
+      setActionLoading(false);
+      setTimeout(() => setActionMsg(''), 3000);
+    }
+  };
+
+  const handleTriggerReminders = async (borrowerId?: string) => {
+    setActionLoading(true);
+    setActionMsg('');
+    try {
+      const res = await fetch('/api/pintas/reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(borrowerId ? { borrowerId } : {}),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setActionMsg(`✓ ${json.message || 'Pengingat WA berhasil diproses!'}`);
+        fetchBorrowers();
+      } else {
+        setActionMsg('✗ Gagal mengirim pengingat');
+      }
+    } catch {
+      setActionMsg('✗ Terjadi kesalahan saat memicu pengingat');
+    } finally {
+      setActionLoading(false);
+      setTimeout(() => setActionMsg(''), 4000);
+    }
+  };
+
+  const handleTriggerAutoPurge = async () => {
+    setActionLoading(true);
+    setActionMsg('');
+    try {
+      const res = await fetch('/api/pintas/cleanup-purged', { method: 'POST' });
+      if (res.ok) {
+        const json = await res.json();
+        setActionMsg(`✓ ${json.message}`);
+        fetchBorrowers();
+      } else {
+        setActionMsg('✗ Gagal memicu pembersihan berkas');
+      }
+    } catch {
+      setActionMsg('✗ Kesalahan jaringan');
+    } finally {
+      setActionLoading(false);
+      setTimeout(() => setActionMsg(''), 4000);
+    }
+  };
+
   const setPresetImage2 = () => {
     setInfaqMasuk('1250000000');
     setTersalurkan('850500000');
-    setDicadangkan('150000000');
+    setDicadangkan('0');
     setKuotaTersedia('249500000');
     setPengajuanDisetujui('425');
     setPengajuanProses('75');
   };
-
 
   const handleExportPdf = () => {
     window.print();
@@ -155,10 +371,6 @@ export default function AdminPintasPage() {
             <div key={i} className="bg-white rounded-2xl h-40 border border-gray-200" />
           ))}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-5 bg-white rounded-2xl h-96 border border-gray-200" />
-          <div className="lg:col-span-7 bg-white rounded-2xl h-96 border border-gray-200" />
-        </div>
       </div>
     );
   }
@@ -166,24 +378,22 @@ export default function AdminPintasPage() {
   // Values calculation
   const infaqMasukVal = data?.infaqMasuk ?? 1250000000;
   const tersalurkanVal = data?.tersalurkan ?? 850500000;
-  const dicadangkanVal = data?.dicadangkan ?? 150000000;
   const kuotaVal = data?.kuotaTersedia ?? 249500000;
 
-  const totalCalculated = tersalurkanVal + kuotaVal + dicadangkanVal;
+  const totalCalculated = tersalurkanVal + kuotaVal;
   const baseForPct = totalCalculated > 0 ? totalCalculated : infaqMasukVal;
 
-  const tersalurkanPct = baseForPct > 0 ? Math.round((tersalurkanVal / baseForPct) * 100) : 68;
-  const tersediaPct = baseForPct > 0 ? Math.round((kuotaVal / baseForPct) * 100) : 20;
-  const dicadangkanPct = baseForPct > 0 ? Math.round((dicadangkanVal / baseForPct) * 100) : 12;
+  const tersalurkanPct = baseForPct > 0 ? Math.round((tersalurkanVal / baseForPct) * 100) : 77;
+  const tersediaPct = baseForPct > 0 ? Math.round((kuotaVal / baseForPct) * 100) : 23;
 
   // Donut Chart Config
   const doughnutData = {
-    labels: ['Tersalurkan', 'Tersedia', 'Dicadangkan'],
+    labels: ['Tersalurkan', 'Tersedia'],
     datasets: [
       {
-        data: [tersalurkanVal, kuotaVal, dicadangkanVal],
-        backgroundColor: ['#006b2b', '#f59e0b', '#b6c4b8'],
-        hoverBackgroundColor: ['#005522', '#d97706', '#9ca3af'],
+        data: [tersalurkanVal, kuotaVal],
+        backgroundColor: ['#006b2b', '#f59e0b'],
+        hoverBackgroundColor: ['#005522', '#d97706'],
         borderWidth: 0,
         cutout: '72%',
       },
@@ -205,7 +415,7 @@ export default function AdminPintasPage() {
     },
   };
 
-  // Line Chart Config - Exactly matching Image 2 curve
+  // Line Chart Config
   const lineMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul'];
   const lineValues = [35, 55, 45, 125, 95, 145, 165];
 
@@ -258,312 +468,834 @@ export default function AdminPintasPage() {
           color: '#6b7280',
           padding: 8,
         },
-        grid: {
-          color: '#f1f5f9',
-          drawTicks: false,
-        },
+        grid: { color: '#f1f5f9', drawTicks: false },
         border: { display: false },
       },
       x: {
-        ticks: {
-          font: { size: 12, family: 'sans-serif' },
-          color: '#6b7280',
-          padding: 8,
-        },
-        grid: {
-          display: false,
-        },
+        ticks: { font: { size: 12, family: 'sans-serif' }, color: '#6b7280', padding: 8 },
+        grid: { display: false },
         border: { display: false },
       },
     },
   };
 
+  const unpaidCount = borrowers.filter((b) => !b.calculation.isLunas).length;
+  const lunasCount = borrowers.filter((b) => b.calculation.isLunas).length;
+
   return (
     <div className="max-w-7xl mx-auto space-y-5 print:p-0 print:m-0" ref={printAreaRef}>
-      {/* ========================================================================= */}
-      {/* TOP BAR: Filter Tahun & Tombol Export (Sesuai Gambar 2)                  */}
-      {/* ========================================================================= */}
-      <div className="bg-white rounded-2xl border border-gray-200/80 px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
-        {/* Left: Tahun Selector Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setYearDropdownOpen(!yearDropdownOpen)}
-            className="flex items-center gap-2.5 px-3.5 py-2 bg-gray-100 hover:bg-gray-200/80 rounded-xl text-xs sm:text-sm font-semibold text-gray-800 transition-colors border border-gray-200/60"
-          >
-            {/* Calendar Icon */}
-            <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>Tahun Ini ({selectedYear})</span>
-            {/* Chevron Icon */}
-            <svg
-              className={`w-3.5 h-3.5 text-gray-500 transition-transform ${yearDropdownOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 print:hidden">
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2.5">
+            <FontAwesomeIcon icon={faHandHoldingHeart} className="text-[#063A1E] w-6 h-6" />
+            Program PINTAS &amp; Pengelolaan Setoran
+          </h1>
+          <p className="text-xs text-gray-500 mt-1">
+            Kelola data statistik dana, verifikasi setoran peminjam, pengingat awal bulan, dan retensi berkas 30 hari.
+          </p>
+        </div>
 
-          {/* Year Dropdown Menu */}
-          {yearDropdownOpen && (
-            <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-20">
-              {['2026', '2025', '2024', '2023'].map((yr) => (
-                <button
-                  key={yr}
-                  onClick={() => {
-                    setSelectedYear(yr);
-                    setYearDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-4 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
-                    selectedYear === yr ? 'bg-emerald-50 text-[#006b2b]' : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <span>Tahun {yr}</span>
-                  {selectedYear === yr && <span className="text-xs">✓</span>}
-                </button>
-              ))}
-            </div>
+        {/* Global Action Message */}
+        {actionMsg && (
+          <div
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              actionMsg.startsWith('✓') ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+            }`}
+          >
+            {actionMsg}
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SECTION TABS (NAVIGASI 5 FITUR UTAMA)                                     */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-2xl border border-gray-200/80 p-2 shadow-sm flex items-center gap-2 overflow-x-auto print:hidden">
+        <button
+          onClick={() => setAdminSection('overview')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            adminSection === 'overview'
+              ? 'bg-[#006b2b] text-white shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          Ringkasan &amp; Statistik Dana
+        </button>
+
+        <button
+          onClick={() => setAdminSection('peminjam')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
+            adminSection === 'peminjam'
+              ? 'bg-[#006b2b] text-white shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <span>Peminjam &amp; Verifikasi Setoran</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 text-current">
+            {borrowers.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setAdminSection('pengingat')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
+            adminSection === 'pengingat'
+              ? 'bg-[#006b2b] text-white shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <span>Pengingat Bayar Awal Bulan (WA)</span>
+          {unpaidCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-bold">
+              {unpaidCount} Belum Lunas
+            </span>
           )}
-        </div>
+        </button>
 
-        {/* Right: Export Buttons + Admin Edit Button */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Export PDF Button */}
-          <button
-            onClick={handleExportPdf}
-            className="flex items-center gap-2 px-3.5 py-2 border border-[#006b2b] text-[#006b2b] hover:bg-emerald-50/70 rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-[0.98]"
-          >
-            {/* PDF icon with miniature 'PDF' badge */}
-            <svg className="w-4 h-4 text-[#006b2b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span>Export PDF</span>
-          </button>
+        <button
+          onClick={() => setAdminSection('retensi')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            adminSection === 'retensi'
+              ? 'bg-[#006b2b] text-white shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          Retensi Berkas Lunas (30 Hari)
+        </button>
 
-
-          {/* Kelola / Edit Dana Button for Admin */}
-          <button
-            onClick={() => setShowEditModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#006b2b] hover:bg-[#005522] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all active:scale-[0.98]"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-            <span>Sesuaikan Dana & Konten</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setAdminSection('alur_gform')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            adminSection === 'alur_gform'
+              ? 'bg-[#006b2b] text-white shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          Integrasi Google Form &amp; WA Admin
+        </button>
       </div>
 
       {/* ========================================================================= */}
-      {/* 4 STATS CARDS (Sesuai Gambar 2)                                          */}
+      {/* TAB 1: OVERVIEW & STATISTIK DANA                                          */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-        {/* Card 1: Total Infaq Terkumpul */}
-        <div
-          onClick={() => setShowEditModal(true)}
-          className="bg-white rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow group"
-        >
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Total Infaq Terkumpul</p>
-            <div className="space-y-0.5">
-              <p className="font-serif text-2xl font-bold text-gray-900 leading-tight">Rp</p>
-              <p className="font-serif text-2xl font-bold text-gray-900 tracking-tight leading-none">
-                {formatRupiah(infaqMasukVal)}
-              </p>
-            </div>
-          </div>
-          <p className="text-xs font-semibold text-[#006b2b] mt-4 flex items-center gap-1">
-            <svg className="w-3 h-3 text-[#006b2b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M7 17L17 7m0 0H8m9 0v9" />
-            </svg>
-            <span>+12.5% dari bulan lalu</span>
-          </p>
-        </div>
-
-        {/* Card 2: Total Dana Disalurkan */}
-        <div
-          onClick={() => setShowEditModal(true)}
-          className="bg-white rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow group"
-        >
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">
-              Total Dana <br />
-              Disalurkan
-            </p>
-            <div className="space-y-0.5 mt-0.5">
-              <p className="font-serif text-2xl font-bold text-gray-900 leading-tight">Rp</p>
-              <p className="font-serif text-2xl font-bold text-gray-900 tracking-tight leading-none">
-                {formatRupiah(tersalurkanVal)}
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500 font-normal mt-4">
-            {pengajuanDisetujui} Pengajuan disetujui
-          </p>
-        </div>
-
-        {/* Card 3: Dana Dicadangkan (Antrian) */}
-        <div
-          onClick={() => setShowEditModal(true)}
-          className="bg-white rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow group"
-        >
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">
-              Dana Dicadangkan <br />
-              (Antrian)
-            </p>
-            <div className="space-y-0.5 mt-0.5">
-              <p className="font-serif text-2xl font-bold text-gray-900 leading-tight">Rp</p>
-              <p className="font-serif text-2xl font-bold text-gray-900 tracking-tight leading-none">
-                {formatRupiah(dicadangkanVal)}
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500 font-normal mt-4">
-            {pengajuanProses} Pengajuan dalam proses
-          </p>
-        </div>
-
-        {/* Card 4: Dana Tersedia */}
-        <div
-          onClick={() => setShowEditModal(true)}
-          className="bg-white rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow group"
-        >
-          <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Dana Tersedia</p>
-            <div className="space-y-0.5 mt-3">
-              <p className="font-serif text-2xl font-bold text-[#006b2b] leading-tight">Rp</p>
-              <p className="font-serif text-2xl font-bold text-[#006b2b] tracking-tight leading-none">
-                {formatRupiah(kuotaVal)}
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500 font-normal mt-4">
-            Siap disalurkan
-          </p>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 2 CHARTS: Alokasi Dana (Donut) & Tren Penyaluran (Line)                  */}
-      {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
-        {/* Left: Alokasi Dana (Donut Chart) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200/80 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between">
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Alokasi Dana</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Distribusi total infaq saat ini</p>
-          </div>
-
-          {/* Donut with Center Text */}
-          <div className="relative my-6 mx-auto w-[220px] h-[220px]">
-            <Doughnut data={doughnutData} options={doughnutOptions} />
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="font-serif text-2xl font-bold text-gray-900 leading-tight">
-                {formatRupiahShort(baseForPct)}
-              </span>
-              <span className="text-[11px] text-gray-500 font-normal mt-0.5">Total Dana</span>
-            </div>
-          </div>
-
-          {/* Legend Items */}
-          <div className="space-y-2.5 pt-2 border-t border-gray-100/80">
-            {/* Tersalurkan */}
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#006b2b]" />
-                <span className="text-gray-700 font-medium">Tersalurkan</span>
-              </div>
-              <span className="font-bold text-gray-900">{tersalurkanPct}%</span>
-            </div>
-
-            {/* Tersedia */}
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
-                <span className="text-gray-700 font-medium">Tersedia</span>
-              </div>
-              <span className="font-bold text-gray-900">{tersediaPct}%</span>
-            </div>
-
-            {/* Dicadangkan */}
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#b6c4b8]" />
-                <span className="text-gray-700 font-medium">Dicadangkan</span>
-              </div>
-              <span className="font-bold text-gray-900">{dicadangkanPct}%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Tren Penyaluran Dana (Line Chart) */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-200/80 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between">
-          <div className="flex items-start justify-between mb-2">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Tren Penyaluran Dana</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Pencairan per bulan (Juta Rupiah)</p>
-            </div>
-            {/* 3 Dots Menu Button */}
+      {adminSection === 'overview' && (
+        <div className="space-y-5">
+          {/* Top Bar Filter & Buttons */}
+          <div className="bg-white rounded-2xl border border-gray-200/80 px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
             <div className="relative">
               <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                title="Opsi grafik"
+                onClick={() => setYearDropdownOpen(!yearDropdownOpen)}
+                className="flex items-center gap-2 px-3.5 py-2 bg-gray-100 hover:bg-gray-200/80 rounded-xl text-xs sm:text-sm font-semibold text-gray-800 transition-colors border border-gray-200/60"
               >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                </svg>
+                <span>Tahun Ini ({selectedYear})</span>
               </button>
 
-              {menuOpen && (
-                <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-20">
-                  <button
-                    onClick={() => {
-                      setShowEditModal(true);
-                      setMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <span>✏️</span> Edit Data Dana
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleExportPdf();
-                      setMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <span>📄</span> Export PDF
-                  </button>
+              {yearDropdownOpen && (
+                <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-20">
+                  {['2026', '2025', '2024', '2023'].map((yr) => (
+                    <button
+                      key={yr}
+                      onClick={() => {
+                        setSelectedYear(yr);
+                        setYearDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
+                        selectedYear === yr ? 'bg-emerald-50 text-[#006b2b]' : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span>Tahun {yr}</span>
+                      {selectedYear === yr && <span className="text-xs">✓</span>}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                onClick={handleExportPdf}
+                className="flex items-center justify-center px-3.5 py-2 border border-[#006b2b] text-[#006b2b] hover:bg-emerald-50/70 rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-[0.98]"
+              >
+                <span>Export PDF Statistik</span>
+              </button>
+
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="flex items-center justify-center px-4 py-2 bg-[#006b2b] hover:bg-[#005522] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-all active:scale-[0.98]"
+              >
+                <span>Sesuaikan Dana &amp; Konten</span>
+              </button>
+            </div>
           </div>
 
-          {/* Area Line Chart */}
-          <div className="w-full h-[280px] sm:h-[300px] mt-4">
-            <Line data={lineData} options={lineOptions} />
+          {/* 3 Metric Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+            {/* Card 1: Total Infaq Terkumpul */}
+            <div
+              onClick={() => setShowEditModal(true)}
+              className="bg-white rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow group"
+            >
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">Total Infaq Terkumpul</p>
+                <div className="space-y-0.5">
+                  <p className="font-serif text-2xl font-bold text-gray-900 leading-tight">Rp</p>
+                  <p className="font-serif text-2xl font-bold text-gray-900 tracking-tight leading-none">
+                    {formatRupiah(infaqMasukVal)}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs font-semibold text-[#006b2b] mt-4 flex items-center gap-1">
+                <svg className="w-3 h-3 text-[#006b2b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M7 17L17 7m0 0H8m9 0v9" />
+                </svg>
+                <span>+12.5% dari bulan lalu</span>
+              </p>
+            </div>
+
+            {/* Card 2: Total Dana Disalurkan */}
+            <div
+              onClick={() => setShowEditModal(true)}
+              className="bg-white rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow group"
+            >
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">Total Dana Disalurkan</p>
+                <div className="space-y-0.5">
+                  <p className="font-serif text-2xl font-bold text-gray-900 leading-tight">Rp</p>
+                  <p className="font-serif text-2xl font-bold text-gray-900 tracking-tight leading-none">
+                    {formatRupiah(tersalurkanVal)}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 font-normal mt-4">
+                {pengajuanDisetujui} Pengajuan disetujui
+              </p>
+            </div>
+
+            {/* Card 3: Dana Tersedia */}
+            <div
+              onClick={() => setShowEditModal(true)}
+              className="bg-white rounded-2xl border border-gray-200/80 p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between cursor-pointer hover:shadow-md transition-shadow group"
+            >
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">Dana Tersedia</p>
+                <div className="space-y-0.5">
+                  <p className="font-serif text-2xl font-bold text-[#006b2b] leading-tight">Rp</p>
+                  <p className="font-serif text-2xl font-bold text-[#006b2b] tracking-tight leading-none">
+                    {formatRupiah(kuotaVal)}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 font-normal mt-4">
+                Siap disalurkan
+              </p>
+            </div>
+          </div>
+
+          {/* 2 Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+            {/* Left: Alokasi Dana */}
+            <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200/80 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Alokasi Dana</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Distribusi total infaq saat ini</p>
+              </div>
+
+              <div className="relative my-6 mx-auto w-[220px] h-[220px]">
+                <Doughnut data={doughnutData} options={doughnutOptions} />
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="font-serif text-2xl font-bold text-gray-900 leading-tight">
+                    {formatRupiahShort(baseForPct)}
+                  </span>
+                  <span className="text-[11px] text-gray-500 font-normal mt-0.5">Total Dana</span>
+                </div>
+              </div>
+
+              <div className="space-y-2.5 pt-2 border-t border-gray-100/80">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#006b2b]" />
+                    <span className="text-gray-700 font-medium">Tersalurkan</span>
+                  </div>
+                  <span className="font-bold text-gray-900">{tersalurkanPct}%</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+                    <span className="text-gray-700 font-medium">Tersedia</span>
+                  </div>
+                  <span className="font-bold text-gray-900">{tersediaPct}%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Tren Penyaluran Dana */}
+            <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-200/80 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Tren Penyaluran Dana</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Pencairan per bulan (Juta Rupiah)</p>
+                </div>
+              </div>
+
+              <div className="w-full h-[280px] sm:h-[300px] mt-4">
+                <Line data={lineData} options={lineOptions} />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ========================================================================= */}
-      {/* MODAL EDIT DATA DANA & KONTEN (Untuk Admin Mengatur Nilai)                 */}
+      {/* TAB 2: DATA PEMINJAM & VERIFIKASI SETORAN (DENGAN EXPORT PER USER)        */}
+      {/* ========================================================================= */}
+      {adminSection === 'peminjam' && (
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl border border-gray-200/80 p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">
+                Daftar Peminjam &amp; Verifikasi Mutasi Setoran
+              </h2>
+              <p className="text-xs text-gray-500">
+                Tinjau bukti transfer, ubah status verifikasi, dan lakukan <strong>Export Status Pinjaman Per User</strong>.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-3 py-1.5 rounded-xl">
+                {lunasCount} Lunas
+              </span>
+              <span className="text-xs bg-amber-100 text-amber-800 font-bold px-3 py-1.5 rounded-xl">
+                {unpaidCount} Belum Lunas
+              </span>
+            </div>
+          </div>
+
+          {/* Table of Borrowers */}
+          <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-gray-700">
+                <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 uppercase font-bold">
+                  <tr>
+                    <th className="py-3 px-4">Peminjam</th>
+                    <th className="py-3 px-3">Peran / Unit</th>
+                    <th className="py-3 px-3 text-right">Pinjaman</th>
+                    <th className="py-3 px-3 text-right">Sudah Setor</th>
+                    <th className="py-3 px-3 text-right">Sisa Tagihan</th>
+                    <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Aksi / Export</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {borrowers.map((b) => (
+                    <tr key={b.id} className="hover:bg-gray-50/80 transition-colors">
+                      <td className="py-3 px-4">
+                        <p className="font-bold text-gray-900 text-sm">{b.nama}</p>
+                        <p className="text-[11px] font-mono text-gray-500">{b.identifier}</p>
+                        <p className="text-[11px] text-gray-400">WA: {b.noWa}</p>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 rounded-md bg-gray-100 font-semibold text-gray-700 text-[10px]">
+                          {b.peran}
+                        </span>
+                        <p className="text-[11px] text-gray-500 mt-1 truncate max-w-[180px]">
+                          {b.unitFakultas}
+                        </p>
+                      </td>
+                      <td className="py-3 px-3 text-right font-medium">
+                        Rp {formatRupiah(b.totalPinjaman)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-bold text-[#006b2b]">
+                        Rp {formatRupiah(b.calculation.totalSetor)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-bold text-amber-700">
+                        Rp {formatRupiah(b.calculation.sisaPinjaman)}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                            b.calculation.isLunas
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {b.calculation.isLunas ? 'LUNAS' : 'BELUM LUNAS'}
+                        </span>
+                        {b.calculation.isLunas && b.calculation.retentionDaysLeft !== null && (
+                          <span className="block text-[9px] text-gray-400 mt-0.5">
+                            Retensi: {b.calculation.retentionDaysLeft} hari
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          {/* Export PDF per user button */}
+                          <Link
+                            href={`/program/pinjaman-tanpa-syarat-pintas/export/${b.identifier}`}
+                            target="_blank"
+                            className="px-3 py-1.5 bg-[#006b2b] hover:bg-[#005522] text-white font-bold text-[11px] rounded-lg transition-colors shadow-2xs"
+                            title="Export PDF Surat Keterangan Khusus Peminjam Ini"
+                          >
+                            Export PDF
+                          </Link>
+
+                          {/* Portal View */}
+                          <Link
+                            href={`/program/pinjaman-tanpa-syarat-pintas/setoran?user=${b.identifier}`}
+                            target="_blank"
+                            className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-semibold rounded-lg transition-colors"
+                            title="Buka Portal Setoran"
+                          >
+                            Buka Portal
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Sub-section: Rincian Riwayat Semua Mutasi Setoran */}
+          <div className="bg-white rounded-2xl border border-gray-200/80 p-5 shadow-sm space-y-3">
+            <h3 className="text-sm font-bold text-gray-900">
+              Semua Mutasi Setoran &amp; Verifikasi Bukti Transfer
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
+                  <tr>
+                    <th className="py-2.5 px-3">Tanggal</th>
+                    <th className="py-2.5 px-3">Peminjam</th>
+                    <th className="py-2.5 px-3">Nominal</th>
+                    <th className="py-2.5 px-3">Bukti Transfer</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-center">Aksi Verifikasi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {borrowers.flatMap((b) =>
+                    b.setoran.map((s) => (
+                      <tr key={s.id} className="hover:bg-gray-50">
+                        <td className="py-2.5 px-3 font-medium text-gray-600">
+                          {formatDate(s.tanggalSetor)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-bold text-gray-900 block">{b.nama}</span>
+                          <span className="text-[10px] text-gray-400 font-mono">{b.identifier}</span>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-[#006b2b]">
+                          Rp {formatRupiah(s.nominal)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {s.buktiPurged ? (
+                            <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              Dibersihkan (&gt;30 hari lunas)
+                            </span>
+                          ) : s.buktiTransferUrl ? (
+                            <button
+                              onClick={() => setPreviewBuktiModal(s.buktiTransferUrl)}
+                              className="text-[#006b2b] font-bold text-[11px] hover:underline"
+                            >
+                              Lihat Bukti
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 italic">Tidak ada berkas</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              s.status === 'TERVERIFIKASI'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : s.status === 'DITOLAK'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {s.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {s.status === 'MENUNGGU_VERIFIKASI' ? (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => handleVerifySetoran(b.id, s.id, 'TERVERIFIKASI')}
+                                className="px-2.5 py-1 bg-emerald-600 text-white rounded-md text-[10px] font-bold hover:bg-emerald-700"
+                              >
+                                Verifikasi
+                              </button>
+                              <button
+                                onClick={() => handleVerifySetoran(b.id, s.id, 'DITOLAK')}
+                                className="px-2.5 py-1 bg-red-600 text-white rounded-md text-[10px] font-bold hover:bg-red-700"
+                              >
+                                Tolak
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-gray-400">Selesai</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 3: PENGINGAT AWAL BULAN (NOTIFIKASI WHATSAPP)                         */}
+      {/* ========================================================================= */}
+      {adminSection === 'pengingat' && (
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#006b2b]">
+                  Jadwal Otomatis: Setiap Tanggal 1 Awal Bulan Pukul 08:00 WIB
+                </span>
+                <h2 className="text-base sm:text-lg font-black text-gray-900 mt-0.5">
+                  Notifikasi Pengingat Bayar PINTAS via WhatsApp
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Sistem mengecek seluruh peminjam yang belum berstatus lunas dan mengirimkan rincian sisa tagihan secara berkala.
+                </p>
+              </div>
+
+              <button
+                onClick={() => handleTriggerReminders()}
+                disabled={actionLoading}
+                className="px-5 py-2.5 bg-[#006b2b] hover:bg-[#005522] text-white text-xs font-bold rounded-xl shadow-sm transition-all active:scale-[0.98] disabled:opacity-50 shrink-0"
+              >
+                {actionLoading ? 'Mengirim...' : 'Jalankan Pengingat Sekarang (Semua Belum Lunas)'}
+              </button>
+            </div>
+
+            {/* List Peminjam yang Belum Lunas */}
+            <div className="mt-5">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 mb-3">
+                Daftar Peminjam Belum Lunas ({unpaidCount} Orang)
+              </h3>
+              <div className="divide-y divide-gray-100 border border-gray-200 rounded-2xl overflow-hidden">
+                {borrowers
+                  .filter((b) => !b.calculation.isLunas)
+                  .map((b) => {
+                    const waText = encodeURIComponent(
+                      `Assalamu'alaikum Sdr/i ${b.nama}. Pengingat setoran PINTAS Rumah Amal USK untuk bulan ini. Sisa pinjaman Anda: Rp ${formatRupiah(
+                        b.calculation.sisaPinjaman
+                      )}. Rekening BSI: 7082305587. Portal Setoran: https://rumahamal.usk.ac.id/program/pinjaman-tanpa-syarat-pintas/setoran?user=${b.identifier}`
+                    );
+
+                    return (
+                      <div
+                        key={b.id}
+                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:bg-gray-50 transition-colors"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900 text-sm">{b.nama}</span>
+                            <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-700">
+                              {b.peran}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 font-mono mt-0.5">
+                            {b.identifier} • WA: {b.noWa}
+                          </p>
+                          <p className="text-xs text-amber-700 font-bold mt-1">
+                            Sisa Pinjaman: Rp {formatRupiah(b.calculation.sisaPinjaman)}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleTriggerReminders(b.id)}
+                            className="px-3.5 py-1.5 bg-gray-800 hover:bg-black text-white text-xs font-semibold rounded-xl transition-colors"
+                          >
+                            Kirim via Gateway
+                          </button>
+
+                          <a
+                            href={`https://api.whatsapp.com/send/?phone=${b.noWa}&text=${waText}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3.5 py-1.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
+                          >
+                            <span>Chat WA Langsung</span>
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Riwayat Log Pengingat Terkirim */}
+            <div className="mt-8 pt-5 border-t border-gray-100">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 mb-3">
+                Log Pengingat yang Pernah Dikirim
+              </h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {reminderLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-xl bg-gray-50 border border-gray-100 text-xs flex items-center justify-between gap-3"
+                  >
+                    <div>
+                      <span className="font-bold text-gray-900">{log.borrowerName}</span> ({log.identifier})
+                      <span className="text-gray-500 block text-[11px] mt-0.5">
+                        Periode: {log.bulan} • Sisa: Rp {formatRupiah(log.sisaPinjaman)}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                        {log.status}
+                      </span>
+                      <span className="text-[10px] text-gray-400 block mt-0.5">
+                        {formatDate(log.sentAt)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 4: RETENSI BERKAS LUNAS & AUTO-PURGE 30 HARI                          */}
+      {/* ========================================================================= */}
+      {adminSection === 'retensi' && (
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                  Optimalisasi Server &amp; Pengamanan Data
+                </span>
+                <h2 className="text-base sm:text-lg font-black text-gray-900 mt-0.5">
+                  Kebijakan Retensi Berkas Pembayaran (30 Hari Pasca Lunas)
+                </h2>
+                <p className="text-xs text-gray-600 mt-1 max-w-2xl leading-relaxed">
+                  Sesuai permintaan sistem: apabila peminjam sudah berstatus <strong>LUNAS</strong>, bukti fisik pembayaran dihapus secara otomatis dalam estimasi <strong>30 hari</strong> demi efisiensi server. Sebelum dihapus, pastikan berkas diamankan melalui fitur export per user. Data akuntansi finansial tetap tersimpan permanen.
+                </p>
+              </div>
+
+              <button
+                onClick={handleTriggerAutoPurge}
+                disabled={actionLoading}
+                className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all active:scale-[0.98] disabled:opacity-50 shrink-0"
+              >
+                {actionLoading ? 'Membersihkan...' : 'Jalankan Pembersihan Berkas (>30 Hari)'}
+              </button>
+            </div>
+
+            {/* List Peminjam Lunas dan status retensi */}
+            <div className="mt-5 space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700">
+                Status Retensi Peminjam Lunas
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {borrowers
+                  .filter((b) => b.calculation.isLunas)
+                  .map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-5 rounded-2xl border bg-gray-50 border-gray-200 flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-bold text-gray-900 text-sm">{b.nama}</span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                            Lunas: {formatDate(b.lunasAt)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 font-mono">{b.identifier}</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Total Pinjaman Telah Selesai: <strong>Rp {formatRupiah(b.totalPinjaman)}</strong>
+                        </p>
+
+                        <div className="mt-3 p-3 rounded-xl bg-white border border-gray-200 text-xs">
+                          {b.calculation.isPurged ? (
+                            <span className="text-amber-800 font-semibold flex items-center gap-1.5">
+                              <span>🗑️</span> Berkas bukti transfer telah dibersihkan otomatis (&gt;30 hari).
+                            </span>
+                          ) : (
+                            <span className="text-emerald-800 font-semibold flex items-center gap-1.5">
+                              <span>⏳</span> Sisa masa retensi: <strong>{b.calculation.retentionDaysLeft} hari</strong> lagi sebelum berkas dihapus otomatis.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-gray-200 flex items-center justify-end">
+                        <Link
+                          href={`/program/pinjaman-tanpa-syarat-pintas/export/${b.identifier}`}
+                          target="_blank"
+                          className="px-4 py-2 bg-[#006b2b] hover:bg-[#005522] text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+                        >
+                          Export Surat Lunas (PDF)
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 5: INTEGRASI GOOGLE FORM & WA ADMIN                                   */}
+      {/* ========================================================================= */}
+      {adminSection === 'alur_gform' && (
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-sm space-y-5">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#006b2b]">
+                Panduan Integrasi WhatsApp &amp; Google Form
+              </span>
+              <h2 className="text-base sm:text-lg font-black text-gray-900 mt-0.5">
+                Alur Pendaftaran &amp; Notifikasi Google Form ke WhatsApp Admin
+              </h2>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                Menjawab kebutuhan: <em>&ldquo;Apabila sudah mendaftar melalui gform apa bisa memberi notifikasi kepada admin melalui WA?&rdquo;</em>
+                <br />
+                <strong>YA, TENTU BISA!</strong> Terdapat 2 metode yang telah diaktifkan:
+              </p>
+            </div>
+
+            {/* Metode 1 */}
+            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-2">
+              <h3 className="text-xs font-black uppercase text-emerald-950 flex items-center gap-1.5">
+                <span>1️⃣</span> Metode 1: Tombol Konfirmasi Instan di Website (Sudah Aktif)
+              </h3>
+              <p className="text-xs text-emerald-900 leading-relaxed">
+                Di halaman publik PINTAS, pendaftar yang telah mengisi Google Form dapat langsung mengklik tombol <strong>&ldquo;Konfirmasi Pendaftaran ke Admin via WhatsApp&rdquo;</strong>. Tombol ini otomatis membuka WhatsApp Admin Rumah Amal ({noWaAdmin}) dengan format pesan lengkap.
+              </p>
+            </div>
+
+            {/* Metode 2: Google Apps Script Webhook */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-3">
+              <h3 className="text-xs font-black uppercase text-gray-900 flex items-center gap-1.5">
+                <span>2️⃣</span> Metode 2: Webhook Otomatis di Google Form (Google Apps Script)
+              </h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Bila ingin notifikasi terkirim <strong>100% otomatis tanpa pendaftar membuka WA</strong>, cukup pasang skrip Google Apps Script berikut di formulir Google Form Rumah Amal:
+              </p>
+
+              <pre className="p-3 bg-gray-900 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto leading-relaxed">
+{`// Buka Google Form -> Titik Tiga (Opsi) -> Script Editor (Apps Script)
+// Tempelkan kode ini dan pasang Trigger pada onFormSubmit:
+
+function onFormSubmit(e) {
+  var itemResponses = e.response.getItemResponses();
+  var nama = itemResponses[0].getResponse();
+  var peran = itemResponses[1].getResponse();
+  var noHp = itemResponses[2].getResponse();
+
+  var pesan = "🚨 NOTIFIKASI PINTAS BARU!\\n" +
+              "Ada pendaftar baru melalui Google Form:\\n" +
+              "• Nama: " + nama + "\\n" +
+              "• Peran: " + peran + "\\n" +
+              "• Kontak: " + noHp + "\\n" +
+              "Silakan cek berkas di Drive Rumah Amal USK.";
+
+  // Kirim ke WhatsApp Gateway Rumah Amal USK
+  UrlFetchApp.fetch("http://localhost:3001/send-message", {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({
+      phone: "${noWaAdmin}",
+      message: pesan
+    })
+  });
+}`}
+              </pre>
+            </div>
+
+            {/* Tautan Berkas & Formulir */}
+            <div className="pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl border border-gray-200">
+                <span className="text-xs font-bold text-gray-800 block mb-1">
+                  Kategori Mahasiswa
+                </span>
+                <p className="text-[11px] text-gray-500 mb-2">
+                  Drive: {linkDownloadMahasiswa}
+                  <br />
+                  GForm: {linkGformMahasiswa}
+                </p>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="text-xs font-bold text-[#006b2b] hover:underline"
+                >
+                  Ubah Tautan Mahasiswa →
+                </button>
+              </div>
+
+              <div className="p-4 rounded-xl border border-gray-200">
+                <span className="text-xs font-bold text-gray-800 block mb-1">
+                  Kategori Dosen &amp; Staff USK
+                </span>
+                <p className="text-[11px] text-gray-500 mb-2">
+                  Drive: {linkDownloadDosenStaff}
+                  <br />
+                  GForm: {linkGformDosenStaff}
+                </p>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="text-xs font-bold text-[#006b2b] hover:underline"
+                >
+                  Ubah Tautan Dosen/Staff →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL PREVIEW BUKTI TRANSFER                                              */}
+      {/* ========================================================================= */}
+      {previewBuktiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 overflow-hidden shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+              <h4 className="text-sm font-bold text-gray-900">Bukti Transfer Pembayaran</h4>
+              <button
+                onClick={() => setPreviewBuktiModal(null)}
+                className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center font-bold text-gray-500 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto flex items-center justify-center bg-gray-100 rounded-2xl p-2">
+              <img
+                src={previewBuktiModal}
+                alt="Bukti Transfer"
+                className="max-h-[60vh] w-auto object-contain rounded-xl"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL EDIT DATA DANA & KONTEN                                             */}
       {/* ========================================================================= */}
       {showEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl border border-gray-200 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8">
             <div className="flex items-center justify-between pb-4 border-b border-gray-100">
               <div>
-                <h3 className="text-lg font-black text-gray-900">Kelola Data & Dana PINTAS</h3>
+                <h3 className="text-lg font-black text-gray-900">Kelola Data &amp; Dana PINTAS</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Sesuaikan jumlah dana dan informasi yang akan tampil di halaman publik
+                  Sesuaikan jumlah dana dan tautan resmi formulir PINTAS
                 </p>
               </div>
               <button
@@ -577,7 +1309,7 @@ export default function AdminPintasPage() {
             {/* Quick Action Presets */}
             <div className="mt-4 flex items-center justify-between bg-emerald-50/70 border border-emerald-100 p-3 rounded-2xl">
               <span className="text-xs text-emerald-800 font-medium">
-                Gunakan angka default sesuai Gambar 2 (1.25 Milyar, 850.5 Jt, 150 Jt, 249.5 Jt):
+                Gunakan angka default Gambar 2 (1.25 M, 850.5 Jt, 249.5 Jt):
               </span>
               <button
                 onClick={setPresetImage2}
@@ -595,7 +1327,7 @@ export default function AdminPintasPage() {
                   activeTab === 'dana' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
-                💰 Nominal Dana & Statistik
+                Nominal Dana &amp; Statistik
               </button>
               <button
                 onClick={() => setActiveTab('konten')}
@@ -603,7 +1335,7 @@ export default function AdminPintasPage() {
                   activeTab === 'konten' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
-                📝 Konten & Persyaratan
+                Konten &amp; Tautan Formulir
               </button>
             </div>
 
@@ -611,7 +1343,6 @@ export default function AdminPintasPage() {
             {activeTab === 'dana' && (
               <div className="mt-5 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Total Infaq Terkumpul */}
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       Total Infaq Terkumpul (Rp)
@@ -620,15 +1351,13 @@ export default function AdminPintasPage() {
                       type="number"
                       value={infaqMasuk}
                       onChange={(e) => setInfaqMasuk(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                      placeholder="1250000000"
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
                     />
                     <span className="text-[11px] text-gray-400 mt-1 block">
                       Preview: Rp {formatRupiah(Number(infaqMasuk) || 0)}
                     </span>
                   </div>
 
-                  {/* Total Dana Disalurkan */}
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       Total Dana Disalurkan (Rp)
@@ -637,32 +1366,13 @@ export default function AdminPintasPage() {
                       type="number"
                       value={tersalurkan}
                       onChange={(e) => setTersalurkan(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                      placeholder="850500000"
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
                     />
                     <span className="text-[11px] text-gray-400 mt-1 block">
                       Preview: Rp {formatRupiah(Number(tersalurkan) || 0)}
                     </span>
                   </div>
 
-                  {/* Dana Dicadangkan (Antrian) */}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      Dana Dicadangkan / Antrian (Rp)
-                    </label>
-                    <input
-                      type="number"
-                      value={dicadangkan}
-                      onChange={(e) => setDicadangkan(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                      placeholder="150000000"
-                    />
-                    <span className="text-[11px] text-gray-400 mt-1 block">
-                      Preview: Rp {formatRupiah(Number(dicadangkan) || 0)}
-                    </span>
-                  </div>
-
-                  {/* Dana Tersedia */}
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
                       Dana Tersedia / Kuota (Rp)
@@ -671,39 +1381,22 @@ export default function AdminPintasPage() {
                       type="number"
                       value={kuotaTersedia}
                       onChange={(e) => setKuotaTersedia(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                      placeholder="249500000"
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
                     />
                     <span className="text-[11px] text-gray-400 mt-1 block">
                       Preview: Rp {formatRupiah(Number(kuotaTersedia) || 0)}
                     </span>
                   </div>
 
-                  {/* Pengajuan Disetujui */}
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
-                      Jumlah Pengajuan Disetujui
+                      Pengajuan Disetujui
                     </label>
                     <input
                       type="number"
                       value={pengajuanDisetujui}
                       onChange={(e) => setPengajuanDisetujui(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                      placeholder="425"
-                    />
-                  </div>
-
-                  {/* Pengajuan Dalam Proses */}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      Jumlah Pengajuan Dalam Proses
-                    </label>
-                    <input
-                      type="number"
-                      value={pengajuanProses}
-                      onChange={(e) => setPengajuanProses(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                      placeholder="75"
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
                     />
                   </div>
                 </div>
@@ -721,61 +1414,81 @@ export default function AdminPintasPage() {
                     value={definisi}
                     onChange={(e) => setDefinisi(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                    placeholder="Program bantuan pinjaman tanpa syarat (PINTAS)..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    Syarat Administrasi (tiap baris satu syarat)
-                  </label>
-                  <textarea
-                    value={syaratAdmin}
-                    onChange={(e) => setSyaratAdmin(e.target.value)}
-                    rows={5}
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                    placeholder="1. Surat Permohonan&#10;2. Surat Rekomendasi..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    Alur Pendaftaran
-                  </label>
-                  <textarea
-                    value={alurPendaftaran}
-                    onChange={(e) => setAlurPendaftaran(e.target.value)}
-                    rows={2}
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                    placeholder="Mengunduh surat permohonan dan rekomendasi melalui link"
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
-                      Link Download Berkas (Google Drive / Form)
+                      Link Berkas Mahasiswa (Drive)
                     </label>
                     <input
                       type="url"
-                      value={linkDownload}
-                      onChange={(e) => setLinkDownload(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                      placeholder="https://..."
+                      value={linkDownloadMahasiswa}
+                      onChange={(e) => setLinkDownloadMahasiswa(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
-                      Link Informasi PINTAS
+                      Link Berkas Dosen &amp; Staff (Drive)
+                    </label>
+                    <input
+                      type="url"
+                      value={linkDownloadDosenStaff}
+                      onChange={(e) => setLinkDownloadDosenStaff(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Link Google Form Mahasiswa
+                    </label>
+                    <input
+                      type="url"
+                      value={linkGformMahasiswa}
+                      onChange={(e) => setLinkGformMahasiswa(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Link Google Form Dosen &amp; Staff
+                    </label>
+                    <input
+                      type="url"
+                      value={linkGformDosenStaff}
+                      onChange={(e) => setLinkGformDosenStaff(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Nomor WhatsApp Admin (Notifikasi)
+                    </label>
+                    <input
+                      type="text"
+                      value={noWaAdmin}
+                      onChange={(e) => setNoWaAdmin(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
+                      placeholder="628116888123"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Link Informasi WhatsApp
                     </label>
                     <input
                       type="url"
                       value={linkInformasi}
                       onChange={(e) => setLinkInformasi(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20 focus:border-[#006b2b]"
-                      placeholder="https://..."
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006b2b]/20"
                     />
                   </div>
                 </div>

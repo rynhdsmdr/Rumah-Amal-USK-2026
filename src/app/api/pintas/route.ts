@@ -24,11 +24,18 @@ export async function PUT(request: NextRequest) {
       infaqMasuk: Number(body.infaqMasuk) || 0,
       tersalurkan: Number(body.tersalurkan) || 0,
       dicadangkan: Number(body.dicadangkan) || 0,
+      pengajuanDisetujui: Number(body.pengajuanDisetujui) || 0,
+      pengajuanProses: Number(body.pengajuanProses) || 0,
       definisi: body.definisi,
       syaratAdmin: body.syaratAdmin,
       alurPendaftaran: body.alurPendaftaran,
       linkDownload: body.linkDownload,
+      linkDownloadMahasiswa: body.linkDownloadMahasiswa,
+      linkDownloadDosenStaff: body.linkDownloadDosenStaff,
+      linkGformMahasiswa: body.linkGformMahasiswa,
+      linkGformDosenStaff: body.linkGformDosenStaff,
       linkInformasi: body.linkInformasi,
+      noWaAdmin: body.noWaAdmin,
     });
 
     if (!result.success) {
